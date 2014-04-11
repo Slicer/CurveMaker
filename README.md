@@ -1,4 +1,4 @@
 CurveMaker
 ==========
 
-Simple 3D Slicer module to generate a spline curve from a list of fiducials
+3D Slicer scripted module to generage a curve from a list of fiducials.
