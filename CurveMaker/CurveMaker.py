@@ -9,12 +9,12 @@ import math
 
 class CurveMaker:
   def __init__(self, parent):
-    parent.title = "CurveMaker" # TODO make this more human readable by adding spaces
-    parent.categories = ["Examples"]
+    parent.title = "Curve Maker"
+    parent.categories = ["Informatics"]
     parent.dependencies = []
-    parent.contributors = ["Junichi Tokuda (BWH)"] # replace with "Firstname Lastname (Org)"
+    parent.contributors = ["Junichi Tokuda (BWH)"]
     parent.helpText = """
-    This module draws a 3D curve that connects fiducials listed in a given markup node. 
+    This module generates a 3D curve model that connects fiducials listed in a given markup node. 
     """
     parent.acknowledgementText = """
     This work was supported by National Center for Image Guided Therapy (P41EB015898). The module is based on a template developed by Jean-Christophe Fillion-Robin, Kitware Inc. and Steve Pieper, Isomics, Inc. partially funded by NIH grant 3P41RR013218-12S1.
@@ -43,22 +43,25 @@ class CurveMakerWidget:
   def setup(self):
     # Instantiate and connect widgets ...
 
+    ####################
+    # For debugging
     #
-    # Reload and Test area
+    ## Reload and Test area
+    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    #reloadCollapsibleButton.text = "Reload && Test"
+    #self.layout.addWidget(reloadCollapsibleButton)
+    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
     #
-    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    reloadCollapsibleButton.text = "Reload && Test"
-    self.layout.addWidget(reloadCollapsibleButton)
-    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-
-    # reload button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CurveMaker Reload"
-    reloadFormLayout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
+    ## reload button
+    ## (use this during development, but remove it when delivering
+    ##  your module to users)
+    #self.reloadButton = qt.QPushButton("Reload")
+    #self.reloadButton.toolTip = "Reload this module."
+    #self.reloadButton.name = "CurveMaker Reload"
+    #reloadFormLayout.addWidget(self.reloadButton)
+    #self.reloadButton.connect('clicked()', self.onReload)
+    #
+    ####################
 
     #
     # Parameters Area
@@ -82,8 +85,8 @@ class CurveMakerWidget:
     self.SourceSelector.renameEnabled = True
     self.SourceSelector.showChildNodeTypes = False
     self.SourceSelector.setMRMLScene( slicer.mrmlScene )
-    self.SourceSelector.setToolTip( "Pick up the target point" )
-    parametersFormLayout.addRow("Source: ", self.SourceSelector)
+    self.SourceSelector.setToolTip( "Pick up a Markups node listing fiducials." )
+    parametersFormLayout.addRow("Source points: ", self.SourceSelector)
 
     #
     # Target point (vtkMRMLMarkupsFiducialNode)
@@ -98,8 +101,8 @@ class CurveMakerWidget:
     self.DestinationSelector.selectNodeUponCreation = True
     self.DestinationSelector.showChildNodeTypes = False
     self.DestinationSelector.setMRMLScene( slicer.mrmlScene )
-    self.DestinationSelector.setToolTip( "Pick up the target point" )
-    parametersFormLayout.addRow("Destination: ", self.DestinationSelector)
+    self.DestinationSelector.setToolTip( "Pick up or create a Model node." )
+    parametersFormLayout.addRow("Curve model: ", self.DestinationSelector)
 
 
     self.RadiusSliderWidget = ctk.ctkSliderWidget()
@@ -115,7 +118,7 @@ class CurveMakerWidget:
     #
     self.EnableCheckBox = qt.QCheckBox()
     self.EnableCheckBox.checked = 0
-    self.EnableCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
+    self.EnableCheckBox.setToolTip("If checked, the CurveMaker module keeps updating the model as the points are updated.")
     parametersFormLayout.addRow("Enable", self.EnableCheckBox)
 
     # connections

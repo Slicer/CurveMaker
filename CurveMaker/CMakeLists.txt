@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME CatheterVisualization)
+set(MODULE_NAME CurveMaker)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
