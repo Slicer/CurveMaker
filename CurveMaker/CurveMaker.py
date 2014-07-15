@@ -166,8 +166,13 @@ class CurveMakerLogic:
     self.SourceNode = None
     self.DestinationNode = None
     self.TubeRadius = 5.0
+    self.NumberOfIntermediatePoints = 20
 
     self.tag = 0;
+
+  def setNumberOfIntermediatePoints(self,npts):
+    if npts > 0:
+      self.NumberOfIntermediatePoints = npts
 
   def updatePoints(self):
 
@@ -215,7 +220,7 @@ class CurveMakerLogic:
 
       self.SplineFilter = vtk.vtkSplineFilter()
       self.SplineFilter.SetInput(self.PolyData)
-      self.SplineFilter.SetNumberOfSubdivisions(20*self.PolyData.GetPoints().GetNumberOfPoints())
+      self.SplineFilter.SetNumberOfSubdivisions(self.NumberOfIntermediatePoints*self.PolyData.GetPoints().GetNumberOfPoints())
       self.SplineFilter.Update()
       self.TubeFilter = vtk.vtkTubeFilter()
       self.TubeFilter.SetInputConnection(self.SplineFilter.GetOutputPort())
@@ -235,6 +240,30 @@ class CurveMakerLogic:
       slicer.mrmlScene.AddNode(destNode)
 
       self.tag = self.SourceNode.AddObserver('ModifiedEvent', self.updateCurve)
+
+  def addNewPoint(self,x,y,z):
+    if (self.SourceNode and self.DestinationNode and self.PolyData):
+      points = self.PolyData.GetPoints()
+      cellArray = self.PolyData.GetLines()
+
+      points.InsertNextPoint(x,y,z)
+      cellArray.InsertCellPoint(self.PolyData.GetNumberOfPoints()-1)
+      cellArray.UpdateCellCount(self.PolyData.GetNumberOfPoints())
+
+      self.PolyData.SetPoints(points)
+      self.PolyData.SetLines(cellArray)
+      self.PolyData.Update()
+
+      self.SourceNode.AddFiducial(x,y,z)
+
+      self.activateEvent(self.SourceNode,self.DestinationNode)
+
+  def getSplineFilterOutput(self):
+    return self.SplineFilter.GetOutput()
+
+  def getSplineFilterOutputPoints(self):
+    if self.SplineFilter.GetOutput():
+      return self.SplineFilter.GetOutput().GetPoints()
 
   def deactivateEvent(self):
     if (self.SourceNode):
