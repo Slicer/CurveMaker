@@ -23,7 +23,7 @@ class CurveMaker:
 
 
 #
-# qCurveMakerWidget
+# CurveMakerWidget
 #
 
 class CurveMakerWidget:
@@ -241,27 +241,10 @@ class CurveMakerLogic:
 
       self.tag = self.SourceNode.AddObserver('ModifiedEvent', self.updateCurve)
 
-  def addNewPoint(self,x,y,z):
-    if (self.SourceNode and self.DestinationNode and self.PolyData):
-      points = self.PolyData.GetPoints()
-      cellArray = self.PolyData.GetLines()
-
-      points.InsertNextPoint(x,y,z)
-      cellArray.InsertCellPoint(self.PolyData.GetNumberOfPoints()-1)
-      cellArray.UpdateCellCount(self.PolyData.GetNumberOfPoints())
-
-      self.PolyData.SetPoints(points)
-      self.PolyData.SetLines(cellArray)
-      self.PolyData.Update()
-
-      self.SourceNode.AddFiducial(x,y,z)
-
-      self.activateEvent(self.SourceNode,self.DestinationNode)
-
-  def getSplineFilterOutput(self):
+  def getGeneratedModel(self):
     return self.SplineFilter.GetOutput()
 
-  def getSplineFilterOutputPoints(self):
+  def getGeneratedPoints(self):
     if self.SplineFilter.GetOutput():
       return self.SplineFilter.GetOutput().GetPoints()
 
