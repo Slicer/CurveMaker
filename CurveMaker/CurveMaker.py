@@ -168,6 +168,9 @@ class CurveMakerLogic:
     self.NumberOfIntermediatePoints = 20
     self.ModelColor = [0.0, 0.0, 1.0]
 
+    self.SplineFilter = None
+    self.TubeFilter = None
+
     self.tag = 0;
 
   def setNumberOfIntermediatePoints(self,npts):
@@ -203,7 +206,6 @@ class CurveMakerLogic:
     self.TubeRadius = radius
 
     if (self.SourceNode and self.DestinationNode):
-      self.TubeFilter.SetRadius(self.TubeRadius)
       self.generateSplineFromMarkups(self.SourceNode, self.DestinationNode)
 
   def activateEvent(self, srcNode, destNode):
@@ -211,7 +213,7 @@ class CurveMakerLogic:
       self.generateSplineFromMarkups(srcNode,destNode)
       self.tag = self.SourceNode.AddObserver('ModifiedEvent', self.updateCurve)
 
-  def generateSplineFromMarkups(self,srcNode, destNode):
+  def generateSplineFromMarkups(self,srcNode,destNode):
     if (srcNode and destNode):
 
       self.SourceNode = srcNode
@@ -220,19 +222,26 @@ class CurveMakerLogic:
       self.PolyData = vtk.vtkPolyData()
       self.updatePoints()
 
-      self.SplineFilter = vtk.vtkSplineFilter()
+      if self.SplineFilter == None:
+        self.SplineFilter = vtk.vtkSplineFilter()
       self.SplineFilter.SetInput(self.PolyData)
       self.SplineFilter.SetNumberOfSubdivisions(self.NumberOfIntermediatePoints*self.PolyData.GetPoints().GetNumberOfPoints())
       self.SplineFilter.Update()
-      self.TubeFilter = vtk.vtkTubeFilter()
+
+      if self.TubeFilter == None:
+        self.TubeFilter = vtk.vtkTubeFilter()
       self.TubeFilter.SetInputConnection(self.SplineFilter.GetOutputPort())
       self.TubeFilter.SetRadius(self.TubeRadius)
       self.TubeFilter.SetNumberOfSides(20)
       self.TubeFilter.CappingOn()
+      self.TubeFilter.Update()
 
       # Add nodes to the scene
       if destNode.GetDisplayNodeID() == None:
-        modelDisplayNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLModelDisplayNode")
+
+        # Bug #12139
+        # modelDisplayNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLModelDisplayNode")
+        modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
         modelDisplayNode.SetColor(self.ModelColor)
         slicer.mrmlScene.AddNode(modelDisplayNode)
         destNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
