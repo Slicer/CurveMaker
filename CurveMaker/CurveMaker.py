@@ -222,9 +222,7 @@ class CurveMakerLogic:
       self.PolyData = vtk.vtkPolyData()
       self.updatePoints()
 
-      if self.SplineFilter == None:
-        self.SplineFilter = vtk.vtkSplineFilter()
-
+      self.SplineFilter = vtk.vtkSplineFilter()
       if vtk.VTK_MAJOR_VERSION <= 5:
         self.SplineFilter.SetInput(self.PolyData)
       else:
@@ -232,8 +230,7 @@ class CurveMakerLogic:
       self.SplineFilter.SetNumberOfSubdivisions(self.NumberOfIntermediatePoints*self.PolyData.GetPoints().GetNumberOfPoints())
       self.SplineFilter.Update()
 
-      if self.TubeFilter == None:
-        self.TubeFilter = vtk.vtkTubeFilter()
+      self.TubeFilter = vtk.vtkTubeFilter()
       self.TubeFilter.SetInputConnection(self.SplineFilter.GetOutputPort())
       self.TubeFilter.SetRadius(self.TubeRadius)
       self.TubeFilter.SetNumberOfSides(20)
