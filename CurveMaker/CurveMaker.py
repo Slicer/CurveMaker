@@ -148,7 +148,6 @@ class CurveMakerWidget:
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
 
-
   def onReload(self,moduleName="CurveMaker"):
     """Generic reload method for any scripted module.
     ModuleWizard will subsitute correct default moduleName.
@@ -167,6 +166,7 @@ class CurveMakerLogic:
     self.DestinationNode = None
     self.TubeRadius = 5.0
     self.NumberOfIntermediatePoints = 20
+    self.ModelColor = [0.0, 0.0, 1.0]
 
     self.tag = 0;
 
@@ -174,42 +174,44 @@ class CurveMakerLogic:
     if npts > 0:
       self.NumberOfIntermediatePoints = npts
 
+    if self.SourceNode and self.DestinationNode:
+      self.generateSplineFromMarkups(self.SourceNode, self.DestinationNode)
+
   def updatePoints(self):
+    points = vtk.vtkPoints()
+    cellArray = vtk.vtkCellArray()
 
-      points = vtk.vtkPoints()
-      cellArray = vtk.vtkCellArray()
-
-      nPoints = self.SourceNode.GetNumberOfFiducials()
-      points.SetNumberOfPoints(nPoints)
-      x = [0.0, 0.0, 0.0]
-      for i in range(nPoints):
-        self.SourceNode.GetNthFiducialPosition(i, x)
-        points.SetPoint(i, x);
-
-      cellArray.InsertNextCell(nPoints)
-      for i in range(nPoints):
-        cellArray.InsertCellPoint(i)
-
-      self.PolyData.SetPoints(points)
-      self.PolyData.SetLines(cellArray)
+    nPoints = self.SourceNode.GetNumberOfFiducials()
+    points.SetNumberOfPoints(nPoints)
+    x = [0.0, 0.0, 0.0]
+    for i in range(nPoints):
+      self.SourceNode.GetNthFiducialPosition(i, x)
+      points.SetPoint(i, x);
       
+    cellArray.InsertNextCell(nPoints)
+    for i in range(nPoints):
+      cellArray.InsertCellPoint(i)
+
+    self.PolyData.SetPoints(points)
+    self.PolyData.SetLines(cellArray)
 
   def updateCurve(self, caller, event):
     if (caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent'):
-
       self.updatePoints()
       
   def setTubeRadius(self, radius):
-
     self.TubeRadius = radius
 
     if (self.SourceNode and self.DestinationNode):
       self.TubeFilter.SetRadius(self.TubeRadius)
-      self.updatePoints()
-      lm = slicer.app.layoutManager()
-      lm.activeThreeDRenderer().Render()
+      self.generateSplineFromMarkups(self.SourceNode, self.DestinationNode)
 
   def activateEvent(self, srcNode, destNode):
+    if srcNode and destNode:
+      self.generateSplineFromMarkups(srcNode,destNode)
+      self.tag = self.SourceNode.AddObserver('ModifiedEvent', self.updateCurve)
+
+  def generateSplineFromMarkups(self,srcNode, destNode):
     if (srcNode and destNode):
 
       self.SourceNode = srcNode
@@ -231,15 +233,15 @@ class CurveMakerLogic:
       # Add nodes to the scene
       if destNode.GetDisplayNodeID() == None:
         modelDisplayNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLModelDisplayNode")
-        modelDisplayNode.SetColor(0.0,0.0,1.0)
+        modelDisplayNode.SetColor(self.ModelColor)
         slicer.mrmlScene.AddNode(modelDisplayNode)
         destNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
       
       destNode.SetAndObservePolyData(self.TubeFilter.GetOutput())
       destNode.Modified()
-      slicer.mrmlScene.AddNode(destNode)
 
-      self.tag = self.SourceNode.AddObserver('ModifiedEvent', self.updateCurve)
+      if destNode.GetScene() == None:
+        slicer.mrmlScene.AddNode(destNode)
 
   def getGeneratedModel(self):
     return self.SplineFilter.GetOutput()
@@ -247,6 +249,12 @@ class CurveMakerLogic:
   def getGeneratedPoints(self):
     if self.SplineFilter.GetOutput():
       return self.SplineFilter.GetOutput().GetPoints()
+
+  def setModelColor(self,r,g,b):
+    self.ModelColor = [r,g,b]
+    if self.DestinationNode:
+      displayNode = self.DestinationNode.GetDisplayNode()
+      displayNode.SetColor(self.ModelColor)
 
   def deactivateEvent(self):
     if (self.SourceNode):
