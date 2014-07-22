@@ -224,7 +224,11 @@ class CurveMakerLogic:
 
       if self.SplineFilter == None:
         self.SplineFilter = vtk.vtkSplineFilter()
-      self.SplineFilter.SetInput(self.PolyData)
+
+      if vtk.VTK_MAJOR_VERSION <= 5:
+        self.SplineFilter.SetInput(self.PolyData)
+      else:
+        self.SplineFilter.SetInputData(self.PolyData)
       self.SplineFilter.SetNumberOfSubdivisions(self.NumberOfIntermediatePoints*self.PolyData.GetPoints().GetNumberOfPoints())
       self.SplineFilter.Update()
 
