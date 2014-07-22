@@ -144,6 +144,9 @@ class CurveMakerWidget:
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
       self.logic.deactivateEvent()
       self.EnableCheckBox.setCheckState(False)
+    else:
+      self.logic.SourceNode = self.SourceSelector.currentNode()
+      self.logic.DestinationNode = self.DestinationSelector.currentNode()
 
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
@@ -197,6 +200,11 @@ class CurveMakerLogic:
 
     self.PolyData.SetPoints(points)
     self.PolyData.SetLines(cellArray)
+
+    # TODO: SetInputData in VTK 6 does not creat pipeline anymore
+    # Need to manually update filters when polydata changed
+    # But if update here, previous model will be updated as well as
+    # previous model will still observe TubeFilter output
 
   def updateCurve(self, caller, event):
     if (caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent'):
