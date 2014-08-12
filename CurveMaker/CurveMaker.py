@@ -39,6 +39,7 @@ class CurveMakerWidget:
       self.setup()
       self.parent.show()
     self.logic = CurveMakerLogic()
+    self.tag = 0
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -46,20 +47,20 @@ class CurveMakerWidget:
     ####################
     # For debugging
     #
-    ## Reload and Test area
-    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    #reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
-    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-    #
-    ## reload button
-    ## (use this during development, but remove it when delivering
-    ##  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "CurveMaker Reload"
-    #reloadFormLayout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
+    # Reload and Test area
+    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    reloadCollapsibleButton.text = "Reload && Test"
+    self.layout.addWidget(reloadCollapsibleButton)
+    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+
+    # reload button
+    # (use this during development, but remove it when delivering
+    #  your module to users)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "CurveMaker Reload"
+    reloadFormLayout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
     #
     ####################
 
@@ -134,18 +135,25 @@ class CurveMakerWidget:
     pass
 
   def onEnable(self, state):
-    if (state == True and self.SourceSelector.currentNode() != None and self.DestinationSelector.currentNode() != None):
-      self.logic.activateEvent(self.SourceSelector.currentNode(), self.DestinationSelector.currentNode())
-    else:
-      self.logic.deactivateEvent()
-      self.EnableCheckBox.setCheckState(False)
+    self.logic.enableAutomaticUpdate(state)
 
   def onSelect(self):
+    # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
-      self.logic.deactivateEvent()
       self.EnableCheckBox.setCheckState(False)
-    else:
+
+    # Remove observer if previous node exists
+    if self.logic.SourceNode and self.tag:
+      self.logic.SourceNode.RemoveObserver(self.tag)
+
+    # Update selected node, add observer, and update control points
+    if self.SourceSelector.currentNode():
       self.logic.SourceNode = self.SourceSelector.currentNode()
+      self.tag = self.logic.SourceNode.AddObserver('ModifiedEvent', self.logic.controlPointsUpdated)
+      self.logic.generateControlPolyData()
+
+    # Update destination node
+    if self.DestinationSelector.currentNode():
       self.logic.DestinationNode = self.DestinationSelector.currentNode()
 
   def onTubeUpdated(self):
@@ -168,74 +176,70 @@ class CurveMakerLogic:
     self.SourceNode = None
     self.DestinationNode = None
     self.TubeRadius = 5.0
+
+    self.AutomaticUpdate = False
     self.NumberOfIntermediatePoints = 20
     self.ModelColor = [0.0, 0.0, 1.0]
 
+    self.ControlPoints = None
     self.SplineFilter = None
     self.TubeFilter = None
 
-    self.tag = 0;
+    self.TubeModel = None
 
   def setNumberOfIntermediatePoints(self,npts):
     if npts > 0:
       self.NumberOfIntermediatePoints = npts
+    self.updateCurve()
 
-    if self.SourceNode and self.DestinationNode:
-      self.generateSplineFromMarkups(self.SourceNode, self.DestinationNode)
-
-  def updatePoints(self):
-    points = vtk.vtkPoints()
-    cellArray = vtk.vtkCellArray()
-
-    nPoints = self.SourceNode.GetNumberOfFiducials()
-    points.SetNumberOfPoints(nPoints)
-    x = [0.0, 0.0, 0.0]
-    for i in range(nPoints):
-      self.SourceNode.GetNthFiducialPosition(i, x)
-      points.SetPoint(i, x);
-      
-    cellArray.InsertNextCell(nPoints)
-    for i in range(nPoints):
-      cellArray.InsertCellPoint(i)
-
-    self.PolyData.SetPoints(points)
-    self.PolyData.SetLines(cellArray)
-
-    # TODO: SetInputData in VTK 6 does not creat pipeline anymore
-    # Need to manually update filters when polydata changed
-    # But if update here, previous model will be updated as well as
-    # previous model will still observe TubeFilter output
-
-  def updateCurve(self, caller, event):
-    if (caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent'):
-      self.updatePoints()
-      
   def setTubeRadius(self, radius):
     self.TubeRadius = radius
+    self.updateCurve()
 
-    if (self.SourceNode and self.DestinationNode):
-      self.generateSplineFromMarkups(self.SourceNode, self.DestinationNode)
+  def enableAutomaticUpdate(self, auto):
+    self.AutomaticUpdate = auto
+    self.generateControlPolyData()
 
-  def activateEvent(self, srcNode, destNode):
-    if srcNode and destNode:
-      self.generateSplineFromMarkups(srcNode,destNode)
-      self.tag = self.SourceNode.AddObserver('ModifiedEvent', self.updateCurve)
+  def controlPointsUpdated(self,caller,event):
+    if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
+      self.generateControlPolyData()
 
-  def generateSplineFromMarkups(self,srcNode,destNode):
-    if (srcNode and destNode):
+  def generateControlPolyData(self):
+    if self.SourceNode:
+      points = vtk.vtkPoints()
+      cellArray = vtk.vtkCellArray()
 
-      self.SourceNode = srcNode
-      self.DestinationNode = destNode
+      nOfControlPoints = self.SourceNode.GetNumberOfFiducials()
+      points.SetNumberOfPoints(nOfControlPoints)
+      pos = [0.0, 0.0, 0.0]
+      for i in range(nOfControlPoints):
+        self.SourceNode.GetNthFiducialPosition(i,pos)
+        points.SetPoint(i,pos)
 
-      self.PolyData = vtk.vtkPolyData()
-      self.updatePoints()
+      cellArray.InsertNextCell(nOfControlPoints)
+      for i in range(nOfControlPoints):
+        cellArray.InsertCellPoint(i)
+
+      if self.ControlPoints == None:
+        self.ControlPoints = vtk.vtkPolyData()
+      self.ControlPoints.Initialize()
+
+      self.ControlPoints.SetPoints(points)
+      self.ControlPoints.SetLines(cellArray)
+
+      if self.AutomaticUpdate:
+        self.updateCurve()
+
+  def updateCurve(self):
+    if self.ControlPoints and self.DestinationNode:
+      totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
 
       self.SplineFilter = vtk.vtkSplineFilter()
       if vtk.VTK_MAJOR_VERSION <= 5:
-        self.SplineFilter.SetInput(self.PolyData)
+        self.SplineFilter.SetInput(self.ControlPoints)
       else:
-        self.SplineFilter.SetInputData(self.PolyData)
-      self.SplineFilter.SetNumberOfSubdivisions(self.NumberOfIntermediatePoints*self.PolyData.GetPoints().GetNumberOfPoints())
+        self.SplineFilter.SetInputData(self.ControlPoints)
+      self.SplineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
       self.SplineFilter.Update()
 
       self.TubeFilter = vtk.vtkTubeFilter()
@@ -245,38 +249,20 @@ class CurveMakerLogic:
       self.TubeFilter.CappingOn()
       self.TubeFilter.Update()
 
-      # Add nodes to the scene
-      if destNode.GetDisplayNodeID() == None:
-
-        # Bug #12139
-        # modelDisplayNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLModelDisplayNode")
+      if self.DestinationNode.GetDisplayNodeID() == None:
         modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
         modelDisplayNode.SetColor(self.ModelColor)
         slicer.mrmlScene.AddNode(modelDisplayNode)
-        destNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-      
-      destNode.SetAndObservePolyData(self.TubeFilter.GetOutput())
-      destNode.Modified()
+        self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
 
-      if destNode.GetScene() == None:
-        slicer.mrmlScene.AddNode(destNode)
+      # TODO: Use attribute to save model ID related to Markups Fiducial List
+      #       in order to allow multiple curves
+      if self.TubeModel == None:
+        self.TubeModel = vtk.vtkPolyData()
+      self.TubeModel.Initialize()
+      self.TubeModel.ShallowCopy(self.TubeFilter.GetOutput())
+      self.DestinationNode.SetAndObservePolyData(self.TubeModel)
+      self.DestinationNode.Modified()
 
-  def getGeneratedModel(self):
-    return self.SplineFilter.GetOutput()
-
-  def getGeneratedPoints(self):
-    if self.SplineFilter.GetOutput():
-      return self.SplineFilter.GetOutput().GetPoints()
-
-  def setModelColor(self,r,g,b):
-    self.ModelColor = [r,g,b]
-    if self.DestinationNode:
-      displayNode = self.DestinationNode.GetDisplayNode()
-      displayNode.SetColor(self.ModelColor)
-
-  def deactivateEvent(self):
-    if (self.SourceNode):
-      self.SourceNode.RemoveObserver(self.tag)
-      self.SourceNode = None
-      self.DestinationNode = None
-
+      if self.DestinationNode.GetScene() == None:
+        slicer.mrmlScene.AddNode(self.DestinationNode)
