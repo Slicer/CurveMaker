@@ -12,7 +12,7 @@ class CurveMaker:
     parent.title = "Curve Maker"
     parent.categories = ["Informatics"]
     parent.dependencies = []
-    parent.contributors = ["Junichi Tokuda (BWH)"]
+    parent.contributors = ["Junichi Tokuda (BWH), Laurent Chauvin (BWH)"]
     parent.helpText = """
     This module generates a 3D curve model that connects fiducials listed in a given markup node. 
     """
@@ -124,8 +124,8 @@ class CurveMakerWidget:
 
     # connections
     self.EnableCheckBox.connect('toggled(bool)', self.onEnable)
-    self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-    self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
+    self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSourceSelected)
+    self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
     self.RadiusSliderWidget.connect("valueChanged(double)", self.onTubeUpdated)
 
     # Add vertical spacer
@@ -137,11 +137,7 @@ class CurveMakerWidget:
   def onEnable(self, state):
     self.logic.enableAutomaticUpdate(state)
 
-  def onSelect(self):
-    # Update checkbox
-    if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
-      self.EnableCheckBox.setCheckState(False)
-
+  def onSourceSelected(self):
     # Remove observer if previous node exists
     if self.logic.SourceNode and self.tag:
       self.logic.SourceNode.RemoveObserver(self.tag)
@@ -149,12 +145,31 @@ class CurveMakerWidget:
     # Update selected node, add observer, and update control points
     if self.SourceSelector.currentNode():
       self.logic.SourceNode = self.SourceSelector.currentNode()
+
+      # Check if model has already been generated with for this fiducial list
+      tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
+      self.DestinationSelector.setCurrentNodeID(tubeModelID)
+
       self.tag = self.logic.SourceNode.AddObserver('ModifiedEvent', self.logic.controlPointsUpdated)
+
+    # Update checkbox
+    if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
+      self.EnableCheckBox.setCheckState(False)
+    else:
+      self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
       self.logic.generateControlPolyData()
 
+  def onDestinationSelected(self):
     # Update destination node
     if self.DestinationSelector.currentNode():
       self.logic.DestinationNode = self.DestinationSelector.currentNode()
+
+    # Update checkbox
+    if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
+      self.EnableCheckBox.setCheckState(False)
+    else:
+      self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
+      self.logic.generateControlPolyData()
 
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
@@ -184,8 +199,6 @@ class CurveMakerLogic:
     self.ControlPoints = None
     self.SplineFilter = None
     self.TubeFilter = None
-
-    self.TubeModel = None
 
   def setNumberOfIntermediatePoints(self,npts):
     if npts > 0:
@@ -257,11 +270,10 @@ class CurveMakerLogic:
 
       # TODO: Use attribute to save model ID related to Markups Fiducial List
       #       in order to allow multiple curves
-      if self.TubeModel == None:
-        self.TubeModel = vtk.vtkPolyData()
-      self.TubeModel.Initialize()
-      self.TubeModel.ShallowCopy(self.TubeFilter.GetOutput())
-      self.DestinationNode.SetAndObservePolyData(self.TubeModel)
+      tubeModel = vtk.vtkPolyData()
+      tubeModel.Initialize()
+      tubeModel.ShallowCopy(self.TubeFilter.GetOutput())
+      self.DestinationNode.SetAndObservePolyData(tubeModel)
       self.DestinationNode.Modified()
 
       if self.DestinationNode.GetScene() == None:
