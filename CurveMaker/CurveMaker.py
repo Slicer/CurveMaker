@@ -197,8 +197,6 @@ class CurveMakerLogic:
     self.ModelColor = [0.0, 0.0, 1.0]
 
     self.ControlPoints = None
-    self.SplineFilter = None
-    self.TubeFilter = None
 
   def setNumberOfIntermediatePoints(self,npts):
     if npts > 0:
@@ -247,20 +245,20 @@ class CurveMakerLogic:
     if self.ControlPoints and self.DestinationNode:
       totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
 
-      self.SplineFilter = vtk.vtkSplineFilter()
+      splineFilter = vtk.vtkSplineFilter()
       if vtk.VTK_MAJOR_VERSION <= 5:
-        self.SplineFilter.SetInput(self.ControlPoints)
+        splineFilter.SetInput(self.ControlPoints)
       else:
-        self.SplineFilter.SetInputData(self.ControlPoints)
-      self.SplineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
-      self.SplineFilter.Update()
+        splineFilter.SetInputData(self.ControlPoints)
+      splineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
+      splineFilter.Update()
 
-      self.TubeFilter = vtk.vtkTubeFilter()
-      self.TubeFilter.SetInputConnection(self.SplineFilter.GetOutputPort())
-      self.TubeFilter.SetRadius(self.TubeRadius)
-      self.TubeFilter.SetNumberOfSides(20)
-      self.TubeFilter.CappingOn()
-      self.TubeFilter.Update()
+      tubeFilter = vtk.vtkTubeFilter()
+      tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
+      tubeFilter.SetRadius(self.TubeRadius)
+      tubeFilter.SetNumberOfSides(20)
+      tubeFilter.CappingOn()
+      tubeFilter.Update()
 
       if self.DestinationNode.GetDisplayNodeID() == None:
         modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
@@ -268,12 +266,7 @@ class CurveMakerLogic:
         slicer.mrmlScene.AddNode(modelDisplayNode)
         self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
 
-      # TODO: Use attribute to save model ID related to Markups Fiducial List
-      #       in order to allow multiple curves
-      tubeModel = vtk.vtkPolyData()
-      tubeModel.Initialize()
-      tubeModel.ShallowCopy(self.TubeFilter.GetOutput())
-      self.DestinationNode.SetAndObservePolyData(tubeModel)
+      self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
       self.DestinationNode.Modified()
 
       if self.DestinationNode.GetScene() == None:
