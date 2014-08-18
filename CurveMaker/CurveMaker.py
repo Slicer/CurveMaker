@@ -79,7 +79,7 @@ class CurveMakerWidget:
     #
     self.SourceSelector = slicer.qMRMLNodeComboBox()
     self.SourceSelector.nodeTypes = ( ("vtkMRMLMarkupsFiducialNode"), "" )
-    self.SourceSelector.addEnabled = False
+    self.SourceSelector.addEnabled = True
     self.SourceSelector.removeEnabled = False
     self.SourceSelector.noneEnabled = True
     self.SourceSelector.showHidden = False
