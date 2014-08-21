@@ -12,7 +12,7 @@ class CurveMaker:
     parent.title = "Curve Maker"
     parent.categories = ["Informatics"]
     parent.dependencies = []
-    parent.contributors = ["Junichi Tokuda (BWH)"]
+    parent.contributors = ["Junichi Tokuda (BWH), Laurent Chauvin (BWH)"]
     parent.helpText = """
     This module generates a 3D curve model that connects fiducials listed in a given markup node. 
     """
@@ -23,7 +23,7 @@ class CurveMaker:
 
 
 #
-# qCurveMakerWidget
+# CurveMakerWidget
 #
 
 class CurveMakerWidget:
@@ -39,6 +39,7 @@ class CurveMakerWidget:
       self.setup()
       self.parent.show()
     self.logic = CurveMakerLogic()
+    self.tag = 0
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -46,20 +47,20 @@ class CurveMakerWidget:
     ####################
     # For debugging
     #
-    ## Reload and Test area
-    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    #reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
-    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-    #
-    ## reload button
-    ## (use this during development, but remove it when delivering
-    ##  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "CurveMaker Reload"
-    #reloadFormLayout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
+    # Reload and Test area
+    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    reloadCollapsibleButton.text = "Reload && Test"
+    self.layout.addWidget(reloadCollapsibleButton)
+    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+
+    # reload button
+    # (use this during development, but remove it when delivering
+    #  your module to users)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "CurveMaker Reload"
+    reloadFormLayout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
     #
     ####################
 
@@ -78,7 +79,7 @@ class CurveMakerWidget:
     #
     self.SourceSelector = slicer.qMRMLNodeComboBox()
     self.SourceSelector.nodeTypes = ( ("vtkMRMLMarkupsFiducialNode"), "" )
-    self.SourceSelector.addEnabled = False
+    self.SourceSelector.addEnabled = True
     self.SourceSelector.removeEnabled = False
     self.SourceSelector.noneEnabled = True
     self.SourceSelector.showHidden = False
@@ -123,8 +124,8 @@ class CurveMakerWidget:
 
     # connections
     self.EnableCheckBox.connect('toggled(bool)', self.onEnable)
-    self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-    self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
+    self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSourceSelected)
+    self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
     self.RadiusSliderWidget.connect("valueChanged(double)", self.onTubeUpdated)
 
     # Add vertical spacer
@@ -134,20 +135,44 @@ class CurveMakerWidget:
     pass
 
   def onEnable(self, state):
-    if (state == True and self.SourceSelector.currentNode() != None and self.DestinationSelector.currentNode() != None):
-      self.logic.activateEvent(self.SourceSelector.currentNode(), self.DestinationSelector.currentNode())
-    else:
-      self.logic.deactivateEvent()
-      self.EnableCheckBox.setCheckState(False)
+    self.logic.enableAutomaticUpdate(state)
 
-  def onSelect(self):
+  def onSourceSelected(self):
+    # Remove observer if previous node exists
+    if self.logic.SourceNode and self.tag:
+      self.logic.SourceNode.RemoveObserver(self.tag)
+
+    # Update selected node, add observer, and update control points
+    if self.SourceSelector.currentNode():
+      self.logic.SourceNode = self.SourceSelector.currentNode()
+
+      # Check if model has already been generated with for this fiducial list
+      tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
+      self.DestinationSelector.setCurrentNodeID(tubeModelID)
+
+      self.tag = self.logic.SourceNode.AddObserver('ModifiedEvent', self.logic.controlPointsUpdated)
+
+    # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
-      self.logic.deactivateEvent()
       self.EnableCheckBox.setCheckState(False)
+    else:
+      self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
+      self.logic.generateControlPolyData()
+
+  def onDestinationSelected(self):
+    # Update destination node
+    if self.DestinationSelector.currentNode():
+      self.logic.DestinationNode = self.DestinationSelector.currentNode()
+
+    # Update checkbox
+    if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
+      self.EnableCheckBox.setCheckState(False)
+    else:
+      self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
+      self.logic.generateControlPolyData()
 
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
-
 
   def onReload(self,moduleName="CurveMaker"):
     """Generic reload method for any scripted module.
@@ -167,78 +192,84 @@ class CurveMakerLogic:
     self.DestinationNode = None
     self.TubeRadius = 5.0
 
-    self.tag = 0;
+    self.AutomaticUpdate = False
+    self.NumberOfIntermediatePoints = 20
+    self.ModelColor = [0.0, 0.0, 1.0]
 
-  def updatePoints(self):
+    self.ControlPoints = None
 
+  def setNumberOfIntermediatePoints(self,npts):
+    if npts > 0:
+      self.NumberOfIntermediatePoints = npts
+    self.updateCurve()
+
+  def setTubeRadius(self, radius):
+    self.TubeRadius = radius
+    self.updateCurve()
+
+  def enableAutomaticUpdate(self, auto):
+    self.AutomaticUpdate = auto
+    self.generateControlPolyData()
+
+  def controlPointsUpdated(self,caller,event):
+    if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
+      self.generateControlPolyData()
+
+  def generateControlPolyData(self):
+    if self.SourceNode:
       points = vtk.vtkPoints()
       cellArray = vtk.vtkCellArray()
 
-      nPoints = self.SourceNode.GetNumberOfFiducials()
-      points.SetNumberOfPoints(nPoints)
-      x = [0.0, 0.0, 0.0]
-      for i in range(nPoints):
-        self.SourceNode.GetNthFiducialPosition(i, x)
-        points.SetPoint(i, x);
+      nOfControlPoints = self.SourceNode.GetNumberOfFiducials()
+      points.SetNumberOfPoints(nOfControlPoints)
+      pos = [0.0, 0.0, 0.0]
+      for i in range(nOfControlPoints):
+        self.SourceNode.GetNthFiducialPosition(i,pos)
+        points.SetPoint(i,pos)
 
-      cellArray.InsertNextCell(nPoints)
-      for i in range(nPoints):
+      cellArray.InsertNextCell(nOfControlPoints)
+      for i in range(nOfControlPoints):
         cellArray.InsertCellPoint(i)
 
-      self.PolyData.SetPoints(points)
-      self.PolyData.SetLines(cellArray)
-      
+      if self.ControlPoints == None:
+        self.ControlPoints = vtk.vtkPolyData()
+      self.ControlPoints.Initialize()
 
-  def updateCurve(self, caller, event):
-    if (caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent'):
+      self.ControlPoints.SetPoints(points)
+      self.ControlPoints.SetLines(cellArray)
 
-      self.updatePoints()
-      
-  def setTubeRadius(self, radius):
+      if self.AutomaticUpdate:
+        self.updateCurve()
 
-    self.TubeRadius = radius
+  def updateCurve(self):
+    if self.ControlPoints and self.DestinationNode:
+      totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
 
-    if (self.SourceNode and self.DestinationNode):
-      self.TubeFilter.SetRadius(self.TubeRadius)
-      self.updatePoints()
-      lm = slicer.app.layoutManager()
-      lm.activeThreeDRenderer().Render()
+      splineFilter = vtk.vtkSplineFilter()
+      if vtk.VTK_MAJOR_VERSION <= 5:
+        splineFilter.SetInput(self.ControlPoints)
+      else:
+        splineFilter.SetInputData(self.ControlPoints)
+      splineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
+      splineFilter.Update()
 
-  def activateEvent(self, srcNode, destNode):
-    if (srcNode and destNode):
+      tubeFilter = vtk.vtkTubeFilter()
+      tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
+      tubeFilter.SetRadius(self.TubeRadius)
+      tubeFilter.SetNumberOfSides(20)
+      tubeFilter.CappingOn()
+      tubeFilter.Update()
 
-      self.SourceNode = srcNode
-      self.DestinationNode = destNode
-
-      self.PolyData = vtk.vtkPolyData()
-      self.updatePoints()
-
-      self.SplineFilter = vtk.vtkSplineFilter()
-      self.SplineFilter.SetInput(self.PolyData)
-      self.SplineFilter.SetNumberOfSubdivisions(20*self.PolyData.GetPoints().GetNumberOfPoints())
-      self.SplineFilter.Update()
-      self.TubeFilter = vtk.vtkTubeFilter()
-      self.TubeFilter.SetInputConnection(self.SplineFilter.GetOutputPort())
-      self.TubeFilter.SetRadius(self.TubeRadius)
-      self.TubeFilter.SetNumberOfSides(20)
-      self.TubeFilter.CappingOn()
-
-      # Add nodes to the scene
-      if destNode.GetDisplayNodeID() == None:
-        modelDisplayNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLModelDisplayNode")
-        modelDisplayNode.SetColor(0.0,0.0,1.0)
+      if self.DestinationNode.GetDisplayNodeID() == None:
+        modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+        modelDisplayNode.SetColor(self.ModelColor)
         slicer.mrmlScene.AddNode(modelDisplayNode)
-        destNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-      
-      destNode.SetAndObservePolyData(self.TubeFilter.GetOutput())
-      destNode.Modified()
-      slicer.mrmlScene.AddNode(destNode)
+        self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
 
-      self.tag = self.SourceNode.AddObserver('ModifiedEvent', self.updateCurve)
+      self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
+      self.DestinationNode.Modified()
 
-  def deactivateEvent(self):
-    if (self.SourceNode):
-      self.SourceNode.RemoveObserver(self.tag)
-      self.SourceNode = None
-      self.DestinationNode = None
+      if self.DestinationNode.GetScene() == None:
+        slicer.mrmlScene.AddNode(self.DestinationNode)
 
+      return splineFilter.GetOutput()
