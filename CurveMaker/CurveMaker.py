@@ -271,3 +271,5 @@ class CurveMakerLogic:
 
       if self.DestinationNode.GetScene() == None:
         slicer.mrmlScene.AddNode(self.DestinationNode)
+
+      return splineFilter.GetOutput()
