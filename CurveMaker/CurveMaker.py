@@ -292,6 +292,10 @@ class CurveMakerLogic:
         self.updateCurve()
 
   def updateCurve(self):
+
+    if self.AutomaticUpdate == False:
+      return
+
     if self.ControlPoints and self.DestinationNode:
       totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
 
