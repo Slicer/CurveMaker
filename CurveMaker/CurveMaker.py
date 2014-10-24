@@ -2,6 +2,7 @@ import os
 import unittest
 from __main__ import vtk, qt, ctk, slicer
 import math
+from Endoscopy import EndoscopyComputePath
 
 #
 # CurveMaker
@@ -44,25 +45,25 @@ class CurveMakerWidget:
   def setup(self):
     # Instantiate and connect widgets ...
 
-    ####################
-    # For debugging
+    #####################
+    ## For debugging
+    ##
+    ## Reload and Test area
+    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    #reloadCollapsibleButton.text = "Reload && Test"
+    #self.layout.addWidget(reloadCollapsibleButton)
+    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
     #
-    # Reload and Test area
-    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    reloadCollapsibleButton.text = "Reload && Test"
-    self.layout.addWidget(reloadCollapsibleButton)
-    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-    
-    # reload button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CurveMaker Reload"
-    reloadFormLayout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
-    #
-    ####################
+    ## reload button
+    ## (use this during development, but remove it when delivering
+    ##  your module to users)
+    #self.reloadButton = qt.QPushButton("Reload")
+    #self.reloadButton.toolTip = "Reload this module."
+    #self.reloadButton.name = "CurveMaker Reload"
+    #reloadFormLayout.addWidget(self.reloadButton)
+    #self.reloadButton.connect('clicked()', self.onReload)
+    ##
+    #####################
 
     #
     # Parameters Area
@@ -125,16 +126,16 @@ class CurveMakerWidget:
     self.InterpolationNone.connect('clicked(bool)', self.onSelectInterpolationNone)
     self.InterpolationCardinalSpline = qt.QRadioButton("Cardinal Spline")
     self.InterpolationCardinalSpline.connect('clicked(bool)', self.onSelectInterpolationCardinalSpline)
-    #self.InterpolationHermiteSpline = qt.QRadioButton("Hermite Spline (for Endoscopy)")
-    #self.InterpolationHermiteSpline.connect('clicked(bool)', self.onSelectInterpolationHermiteSpline)
+    self.InterpolationHermiteSpline = qt.QRadioButton("Hermite Spline (for Endoscopy)")
+    self.InterpolationHermiteSpline.connect('clicked(bool)', self.onSelectInterpolationHermiteSpline)
     self.InterpolationLayout.addWidget(self.InterpolationNone)
     self.InterpolationLayout.addWidget(self.InterpolationCardinalSpline)
-    #self.InterpolationLayout.addWidget(self.InterpolationHermiteSpline)
+    self.InterpolationLayout.addWidget(self.InterpolationHermiteSpline)
     
     self.InterpolationGroup = qt.QButtonGroup()
     self.InterpolationGroup.addButton(self.InterpolationNone)
     self.InterpolationGroup.addButton(self.InterpolationCardinalSpline)
-    #self.InterpolationGroup.addButton(self.InterpolationHermiteSpline)
+    self.InterpolationGroup.addButton(self.InterpolationHermiteSpline)
 
     ## default interpolation method
     self.InterpolationCardinalSpline.setChecked(True)
@@ -185,7 +186,8 @@ class CurveMakerWidget:
       self.EnableCheckBox.setCheckState(False)
     else:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
-      self.logic.generateControlPolyData()
+      #self.logic.generateControlPolyData()
+      self.logic.updateCurve()
 
   def onDestinationSelected(self):
     # Update destination node
@@ -197,7 +199,8 @@ class CurveMakerWidget:
       self.EnableCheckBox.setCheckState(False)
     else:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
-      self.logic.generateControlPolyData()
+      #self.logic.generateControlPolyData()
+      self.logic.updateCurve()
 
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
@@ -259,45 +262,66 @@ class CurveMakerLogic:
 
   def enableAutomaticUpdate(self, auto):
     self.AutomaticUpdate = auto
-    self.generateControlPolyData()
+    self.updateCurve()
 
   def controlPointsUpdated(self,caller,event):
     if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
-      self.generateControlPolyData()
+      self.updateCurve()
 
-  def generateControlPolyData(self):
-    if self.SourceNode:
-      points = vtk.vtkPoints()
-      cellArray = vtk.vtkCellArray()
+  def nodeToPath(self, node, poly):
+    points = vtk.vtkPoints()
+    cellArray = vtk.vtkCellArray()
+  
+    nOfControlPoints = self.SourceNode.GetNumberOfFiducials()
+    points.SetNumberOfPoints(nOfControlPoints)
+    pos = [0.0, 0.0, 0.0]
+    for i in range(nOfControlPoints):
+      self.SourceNode.GetNthFiducialPosition(i,pos)
+      points.SetPoint(i,pos)
+  
+    cellArray.InsertNextCell(nOfControlPoints)
+    for i in range(nOfControlPoints):
+      cellArray.InsertCellPoint(i)
+  
+    poly.Initialize()
+    poly.SetPoints(points)
+    poly.SetLines(cellArray)
 
-      nOfControlPoints = self.SourceNode.GetNumberOfFiducials()
-      points.SetNumberOfPoints(nOfControlPoints)
-      pos = [0.0, 0.0, 0.0]
-      for i in range(nOfControlPoints):
-        self.SourceNode.GetNthFiducialPosition(i,pos)
-        points.SetPoint(i,pos)
+  def pathToPoly(self, path, poly):
+    points = vtk.vtkPoints()
+    cellArray = vtk.vtkCellArray()
 
-      cellArray.InsertNextCell(nOfControlPoints)
-      for i in range(nOfControlPoints):
-        cellArray.InsertCellPoint(i)
+    points = vtk.vtkPoints()
+    poly.SetPoints(points)
 
-      if self.ControlPoints == None:
-        self.ControlPoints = vtk.vtkPolyData()
-      self.ControlPoints.Initialize()
+    lines = vtk.vtkCellArray()
+    poly.SetLines(lines)
 
-      self.ControlPoints.SetPoints(points)
-      self.ControlPoints.SetLines(cellArray)
-
-      if self.AutomaticUpdate:
-        self.updateCurve()
+    linesIDArray = lines.GetData()
+    linesIDArray.Reset()
+    linesIDArray.InsertNextTuple1(0)
+    
+    polygons = vtk.vtkCellArray()
+    poly.SetPolys( polygons )
+    idArray = polygons.GetData()
+    idArray.Reset()
+    idArray.InsertNextTuple1(0)
+    
+    for point in path:
+      pointIndex = points.InsertNextPoint(*point)
+      linesIDArray.InsertNextTuple1(pointIndex)
+      linesIDArray.SetTuple1( 0, linesIDArray.GetNumberOfTuples() - 1 )
+      lines.SetNumberOfCells(1)
 
   def updateCurve(self):
 
     if self.AutomaticUpdate == False:
       return
 
-    if self.ControlPoints and self.DestinationNode:
-      totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
+    if self.SourceNode and self.DestinationNode:
+
+      if self.ControlPoints == None:
+        self.ControlPoints = vtk.vtkPolyData()
 
       if self.DestinationNode.GetDisplayNodeID() == None:
         modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
@@ -306,6 +330,9 @@ class CurveMakerLogic:
         self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
 
       if self.InterpolationMethod == 0:
+
+        self.nodeToPath(self.SourceNode, self.ControlPoints)
+
         append = vtk.vtkAppendPolyData()
 
         points = self.ControlPoints.GetPoints()
@@ -351,6 +378,9 @@ class CurveMakerLogic:
 
       elif self.InterpolationMethod == 1: # Cardinal Spline
 
+        self.nodeToPath(self.SourceNode, self.ControlPoints)
+        totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
+
         splineFilter = vtk.vtkSplineFilter()
         if vtk.VTK_MAJOR_VERSION <= 5:
           splineFilter.SetInput(self.ControlPoints)
@@ -369,25 +399,20 @@ class CurveMakerLogic:
         self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
 
       elif self.InterpolationMethod == 2: # Hermite Spline
-        splineFilter = vtk.vtkSplineFilter()
-        if vtk.VTK_MAJOR_VERSION <= 5:
-          splineFilter.SetInput(self.ControlPoints)
-        else:
-          splineFilter.SetInputData(self.ControlPoints)
-        splineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
-        splineFilter.Update()
         
+        result = EndoscopyComputePath(self.SourceNode)
+        self.pathToPoly(result.path, self.ControlPoints)
+
         tubeFilter = vtk.vtkTubeFilter()
-        tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
+        tubeFilter.SetInputData(self.ControlPoints)
         tubeFilter.SetRadius(self.TubeRadius)
         tubeFilter.SetNumberOfSides(20)
         tubeFilter.CappingOn()
         tubeFilter.Update()
-
         self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
 
       self.DestinationNode.Modified()
-
+      
       if self.DestinationNode.GetScene() == None:
         slicer.mrmlScene.AddNode(self.DestinationNode)
-
+        
