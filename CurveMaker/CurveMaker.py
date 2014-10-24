@@ -44,25 +44,25 @@ class CurveMakerWidget:
   def setup(self):
     # Instantiate and connect widgets ...
 
-    #####################
-    ## For debugging
-    ##
-    ## Reload and Test area
-    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    #reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
-    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    ####################
+    # For debugging
     #
-    ## reload button
-    ## (use this during development, but remove it when delivering
-    ##  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "CurveMaker Reload"
-    #reloadFormLayout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
-    ##
-    #####################
+    # Reload and Test area
+    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    reloadCollapsibleButton.text = "Reload && Test"
+    self.layout.addWidget(reloadCollapsibleButton)
+    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    
+    # reload button
+    # (use this during development, but remove it when delivering
+    #  your module to users)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "CurveMaker Reload"
+    reloadFormLayout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
+    #
+    ####################
 
     #
     # Parameters Area
@@ -106,6 +106,9 @@ class CurveMakerWidget:
     parametersFormLayout.addRow("Curve model: ", self.DestinationSelector)
 
 
+    #
+    # Radius for the tube
+    #
     self.RadiusSliderWidget = ctk.ctkSliderWidget()
     self.RadiusSliderWidget.singleStep = 1.0
     self.RadiusSliderWidget.minimum = 1.0
@@ -115,14 +118,39 @@ class CurveMakerWidget:
     parametersFormLayout.addRow("Radius: ", self.RadiusSliderWidget)
 
     #
-    # check box to start curve visualization
+    # Radio button to select interpolation method
+    #
+    self.InterpolationLayout = qt.QHBoxLayout()
+    self.InterpolationNone = qt.QRadioButton("None")
+    self.InterpolationNone.connect('clicked(bool)', self.onSelectInterpolationNone)
+    self.InterpolationCardinalSpline = qt.QRadioButton("Cardinal Spline")
+    self.InterpolationCardinalSpline.connect('clicked(bool)', self.onSelectInterpolationCardinalSpline)
+    #self.InterpolationHermiteSpline = qt.QRadioButton("Hermite Spline (for Endoscopy)")
+    #self.InterpolationHermiteSpline.connect('clicked(bool)', self.onSelectInterpolationHermiteSpline)
+    self.InterpolationLayout.addWidget(self.InterpolationNone)
+    self.InterpolationLayout.addWidget(self.InterpolationCardinalSpline)
+    #self.InterpolationLayout.addWidget(self.InterpolationHermiteSpline)
+    
+    self.InterpolationGroup = qt.QButtonGroup()
+    self.InterpolationGroup.addButton(self.InterpolationNone)
+    self.InterpolationGroup.addButton(self.InterpolationCardinalSpline)
+    #self.InterpolationGroup.addButton(self.InterpolationHermiteSpline)
+
+    ## default interpolation method
+    self.InterpolationCardinalSpline.setChecked(True)
+    self.onSelectInterpolationCardinalSpline(True)
+
+    parametersFormLayout.addRow("Interpolation: ", self.InterpolationLayout)
+
+    #
+    # Check box to start curve visualization
     #
     self.EnableCheckBox = qt.QCheckBox()
     self.EnableCheckBox.checked = 0
     self.EnableCheckBox.setToolTip("If checked, the CurveMaker module keeps updating the model as the points are updated.")
     parametersFormLayout.addRow("Enable", self.EnableCheckBox)
 
-    # connections
+    # Connections
     self.EnableCheckBox.connect('toggled(bool)', self.onEnable)
     self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSourceSelected)
     self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
@@ -180,6 +208,15 @@ class CurveMakerWidget:
     """
     globals()[moduleName] = slicer.util.reloadScriptedModule(moduleName)
 
+  def onSelectInterpolationNone(self, s):
+    self.logic.setInterpolationMethod(0)
+
+  def onSelectInterpolationCardinalSpline(self, s):
+    self.logic.setInterpolationMethod(1)
+
+  def onSelectInterpolationHermiteSpline(self, s):
+    self.logic.setInterpolationMethod(2)
+
 
 #
 # CurveMakerLogic
@@ -198,6 +235,12 @@ class CurveMakerLogic:
 
     self.ControlPoints = None
 
+    # Interpolation method:
+    #  0: None
+    #  1: Cardinal Spline (VTK default)
+    #  2: Hermite Spline (Endoscopy module default)
+    self.InterpolationMethod = 0
+
   def setNumberOfIntermediatePoints(self,npts):
     if npts > 0:
       self.NumberOfIntermediatePoints = npts
@@ -205,6 +248,13 @@ class CurveMakerLogic:
 
   def setTubeRadius(self, radius):
     self.TubeRadius = radius
+    self.updateCurve()
+
+  def setInterpolationMethod(self, method):
+    if method > 3 or method < 0:
+      self.InterpolationMethod = 0
+    else:
+      self.InterpolationMethod = method
     self.updateCurve()
 
   def enableAutomaticUpdate(self, auto):
@@ -245,31 +295,95 @@ class CurveMakerLogic:
     if self.ControlPoints and self.DestinationNode:
       totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
 
-      splineFilter = vtk.vtkSplineFilter()
-      if vtk.VTK_MAJOR_VERSION <= 5:
-        splineFilter.SetInput(self.ControlPoints)
-      else:
-        splineFilter.SetInputData(self.ControlPoints)
-      splineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
-      splineFilter.Update()
-
-      tubeFilter = vtk.vtkTubeFilter()
-      tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
-      tubeFilter.SetRadius(self.TubeRadius)
-      tubeFilter.SetNumberOfSides(20)
-      tubeFilter.CappingOn()
-      tubeFilter.Update()
-
       if self.DestinationNode.GetDisplayNodeID() == None:
         modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
         modelDisplayNode.SetColor(self.ModelColor)
         slicer.mrmlScene.AddNode(modelDisplayNode)
         self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
 
-      self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
+      if self.InterpolationMethod == 0:
+        append = vtk.vtkAppendPolyData()
+
+        points = self.ControlPoints.GetPoints()
+        point0 = [0, 0, 0]
+        point1 = [0, 0, 0]
+
+        nPoints = points.GetNumberOfPoints()
+
+        for i in range(0, nPoints-1):
+          
+          points.GetPoint(i, point0)
+          points.GetPoint(i+1, point1)
+          
+          p = vtk.vtkPoints()
+          p.SetNumberOfPoints(2)
+          p.SetPoint(0, point0)
+          p.SetPoint(1, point1)
+          
+          ca = vtk.vtkCellArray()
+          ca.InsertNextCell(2)
+          ca.InsertCellPoint(0)
+          ca.InsertCellPoint(1)
+
+          pd = vtk.vtkPolyData()
+          pd.Initialize()
+          pd.SetPoints(p)
+          pd.SetLines(ca)
+          
+          tubeFilter = vtk.vtkTubeFilter()
+          tubeFilter.SetInputData(pd)
+          tubeFilter.SetRadius(self.TubeRadius)
+          tubeFilter.SetNumberOfSides(20)
+          tubeFilter.CappingOn()
+          tubeFilter.Update()
+        
+          if vtk.VTK_MAJOR_VERSION <= 5:
+            append.AddInput(tubeFilter.GetOutput());
+          else:
+            append.AddInputData(tubeFilter.GetOutput());
+
+        append.Update();
+        self.DestinationNode.SetAndObservePolyData(append.GetOutput())
+
+      elif self.InterpolationMethod == 1: # Cardinal Spline
+
+        splineFilter = vtk.vtkSplineFilter()
+        if vtk.VTK_MAJOR_VERSION <= 5:
+          splineFilter.SetInput(self.ControlPoints)
+        else:
+          splineFilter.SetInputData(self.ControlPoints)
+        splineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
+        splineFilter.Update()
+        
+        tubeFilter = vtk.vtkTubeFilter()
+        tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
+        tubeFilter.SetRadius(self.TubeRadius)
+        tubeFilter.SetNumberOfSides(20)
+        tubeFilter.CappingOn()
+        tubeFilter.Update()
+
+        self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
+
+      elif self.InterpolationMethod == 2: # Hermite Spline
+        splineFilter = vtk.vtkSplineFilter()
+        if vtk.VTK_MAJOR_VERSION <= 5:
+          splineFilter.SetInput(self.ControlPoints)
+        else:
+          splineFilter.SetInputData(self.ControlPoints)
+        splineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
+        splineFilter.Update()
+        
+        tubeFilter = vtk.vtkTubeFilter()
+        tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
+        tubeFilter.SetRadius(self.TubeRadius)
+        tubeFilter.SetNumberOfSides(20)
+        tubeFilter.CappingOn()
+        tubeFilter.Update()
+
+        self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
+
       self.DestinationNode.Modified()
 
       if self.DestinationNode.GetScene() == None:
         slicer.mrmlScene.AddNode(self.DestinationNode)
 
-      return splineFilter.GetOutput()
