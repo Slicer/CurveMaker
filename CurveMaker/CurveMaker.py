@@ -45,25 +45,25 @@ class CurveMakerWidget:
   def setup(self):
     # Instantiate and connect widgets ...
 
-    #####################
-    ## For debugging
-    ##
-    ## Reload and Test area
-    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    #reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
-    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    ####################
+    # For debugging
     #
-    ## reload button
-    ## (use this during development, but remove it when delivering
-    ##  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "CurveMaker Reload"
-    #reloadFormLayout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
-    ##
-    #####################
+    # Reload and Test area
+    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    reloadCollapsibleButton.text = "Reload && Test"
+    self.layout.addWidget(reloadCollapsibleButton)
+    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    
+    # reload button
+    # (use this during development, but remove it when delivering
+    #  your module to users)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "CurveMaker Reload"
+    reloadFormLayout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
+    #
+    ####################
 
     #
     # Parameters Area
@@ -144,6 +144,27 @@ class CurveMakerWidget:
     parametersFormLayout.addRow("Interpolation: ", self.InterpolationLayout)
 
     #
+    # Radio button for ring mode
+    #
+    self.RingLayout = qt.QHBoxLayout()
+    self.RingOff = qt.QRadioButton("Off")
+    self.RingOff.connect('clicked(bool)', self.onRingOff)
+    self.RingOn = qt.QRadioButton("On")
+    self.RingOn.connect('clicked(bool)', self.onRingOn)
+    self.RingLayout.addWidget(self.RingOff)
+    self.RingLayout.addWidget(self.RingOn)
+    
+    self.RingGroup = qt.QButtonGroup()
+    self.RingGroup.addButton(self.RingOff)
+    self.RingGroup.addButton(self.RingOn)
+
+    ## default ring mode
+    self.RingOff.setChecked(True)
+    self.onRingOff(True)
+
+    parametersFormLayout.addRow("Ring mode: ", self.RingLayout)
+    
+    #
     # Check box to start curve visualization
     #
     self.EnableCheckBox = qt.QCheckBox()
@@ -220,6 +241,11 @@ class CurveMakerWidget:
   def onSelectInterpolationHermiteSpline(self, s):
     self.logic.setInterpolationMethod(2)
 
+  def onRingOff(self, s):
+    self.logic.setRing(0)
+
+  def onRingOn(self, s):
+    self.logic.setRing(1)
 
 #
 # CurveMakerLogic
@@ -237,12 +263,14 @@ class CurveMakerLogic:
     self.ModelColor = [0.0, 0.0, 1.0]
 
     self.ControlPoints = None
-
+    
     # Interpolation method:
     #  0: None
     #  1: Cardinal Spline (VTK default)
     #  2: Hermite Spline (Endoscopy module default)
     self.InterpolationMethod = 0
+
+    self.RingMode = 0
 
   def setNumberOfIntermediatePoints(self,npts):
     if npts > 0:
@@ -260,6 +288,10 @@ class CurveMakerLogic:
       self.InterpolationMethod = method
     self.updateCurve()
 
+  def setRing(self, switch):
+    self.RingMode = switch
+    self.updateCurve()
+    
   def enableAutomaticUpdate(self, auto):
     self.AutomaticUpdate = auto
     self.updateCurve()
@@ -271,14 +303,15 @@ class CurveMakerLogic:
   def nodeToPath(self, node, poly):
     points = vtk.vtkPoints()
     cellArray = vtk.vtkCellArray()
-  
+
     nOfControlPoints = self.SourceNode.GetNumberOfFiducials()
-    points.SetNumberOfPoints(nOfControlPoints)
     pos = [0.0, 0.0, 0.0]
+
+    points.SetNumberOfPoints(nOfControlPoints)
     for i in range(nOfControlPoints):
       self.SourceNode.GetNthFiducialPosition(i,pos)
       points.SetPoint(i,pos)
-  
+
     cellArray.InsertNextCell(nOfControlPoints)
     for i in range(nOfControlPoints):
       cellArray.InsertCellPoint(i)
@@ -313,6 +346,52 @@ class CurveMakerLogic:
       linesIDArray.SetTuple1( 0, linesIDArray.GetNumberOfTuples() - 1 )
       lines.SetNumberOfCells(1)
 
+  def nodeToClosedCardinalSpline(self, sourceNode, outputPoly):
+    
+    nOfControlPoints = sourceNode.GetNumberOfFiducials()
+    pos = [0.0, 0.0, 0.0]
+
+    # One spline for each direction.
+    aSplineX = vtk.vtkCardinalSpline()
+    aSplineY = vtk.vtkCardinalSpline()
+    aSplineZ = vtk.vtkCardinalSpline()
+    
+    aSplineX.ClosedOn()
+    aSplineY.ClosedOn()
+    aSplineZ.ClosedOn()
+
+    for i in range(0, nOfControlPoints):
+      sourceNode.GetNthFiducialPosition(i, pos)
+      aSplineX.AddPoint(i, pos[0])
+      aSplineY.AddPoint(i, pos[1])
+      aSplineZ.AddPoint(i, pos[2])
+    
+    # Interpolate x, y and z by using the three spline filters and
+    # create new points
+    nInterpolatedPoints = 400
+    points = vtk.vtkPoints()
+    r = [0.0, 0.0]
+    aSplineX.GetParametricRange(r)
+    t = r[0]
+    p = 0
+    tStep = (nOfControlPoints-1.0)/(nInterpolatedPoints-1.0)
+    while t < r[1]+1.0:
+      points.InsertPoint(p, aSplineX.Evaluate(t), aSplineY.Evaluate(t), aSplineZ.Evaluate(t))
+      t = t + tStep
+      p = p + 1
+    # Make sure to close the loop
+    points.InsertPoint(p, aSplineX.Evaluate(r[1]+1.0), aSplineY.Evaluate(r[1]+1.0), aSplineZ.Evaluate(r[1]+1.0))
+    
+    nOutputPoints = p+1
+    lines = vtk.vtkCellArray()
+    lines.InsertNextCell(nOutputPoints)
+    for i in range(0, nOutputPoints):
+      lines.InsertCellPoint(i)
+        
+    outputPoly.SetPoints(points)
+    outputPoly.SetLines(lines)
+
+    
   def updateCurve(self):
 
     if self.AutomaticUpdate == False:
@@ -331,7 +410,7 @@ class CurveMakerLogic:
 
       if self.InterpolationMethod == 0:
 
-        self.nodeToPath(self.SourceNode, self.ControlPoints)
+        self.nodeToPath(self.SourceNode, self.ControlPoints, 0)
 
         append = vtk.vtkAppendPolyData()
 
@@ -378,19 +457,32 @@ class CurveMakerLogic:
 
       elif self.InterpolationMethod == 1: # Cardinal Spline
 
-        self.nodeToPath(self.SourceNode, self.ControlPoints)
-        totalNumberOfPoints = self.NumberOfIntermediatePoints*self.ControlPoints.GetPoints().GetNumberOfPoints()
-
-        splineFilter = vtk.vtkSplineFilter()
-        if vtk.VTK_MAJOR_VERSION <= 5:
-          splineFilter.SetInput(self.ControlPoints)
-        else:
-          splineFilter.SetInputData(self.ControlPoints)
-        splineFilter.SetNumberOfSubdivisions(totalNumberOfPoints)
-        splineFilter.Update()
-        
         tubeFilter = vtk.vtkTubeFilter()
-        tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
+        
+        if self.RingMode > 0:
+          curvePoly = vtk.vtkPolyData()
+          self.nodeToClosedCardinalSpline(self.SourceNode, curvePoly)
+          tubeFilter.SetInputData(curvePoly)
+        else:
+          self.nodeToPath(self.SourceNode, self.ControlPoints)
+          splineFilter = vtk.vtkSplineFilter()
+          spline = vtk.vtkCardinalSpline()
+          spline.ClosedOff()
+
+          splineFilter.SetSpline(spline)
+          if vtk.VTK_MAJOR_VERSION <= 5:
+            splineFilter.SetInput(self.ControlPoints)
+          else:
+            splineFilter.SetInputData(self.ControlPoints)
+
+          #nInterpolatedPoints = self.NumberOfIntermediatePoints*(self.ControlPoints.GetPoints().GetNumberOfPoints()-1)        
+          #splineFilter.SetSubdivideToSpecified();
+          #splineFilter.SetNumberOfSubdivisions(nInterpolatedPoints)
+          splineFilter.Update()
+
+          #print splineFilter.GetSpline()
+          tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
+          
         tubeFilter.SetRadius(self.TubeRadius)
         tubeFilter.SetNumberOfSides(20)
         tubeFilter.CappingOn()
