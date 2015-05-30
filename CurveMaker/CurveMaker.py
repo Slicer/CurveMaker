@@ -344,7 +344,7 @@ class CurveMakerLogic:
     outputPoly.SetPoints(points)
     outputPoly.SetLines(cellArray)
 
-  def nodeToPolyClosedCardinalSpline(self, sourceNode, outputPoly):
+  def nodeToPolyCardinalSpline(self, sourceNode, outputPoly, closed=False):
     
     nOfControlPoints = sourceNode.GetNumberOfFiducials()
     pos = [0.0, 0.0, 0.0]
@@ -353,10 +353,15 @@ class CurveMakerLogic:
     aSplineX = vtk.vtkCardinalSpline()
     aSplineY = vtk.vtkCardinalSpline()
     aSplineZ = vtk.vtkCardinalSpline()
-    
-    aSplineX.ClosedOn()
-    aSplineY.ClosedOn()
-    aSplineZ.ClosedOn()
+
+    if closed:
+      aSplineX.ClosedOn()
+      aSplineY.ClosedOn()
+      aSplineZ.ClosedOn()
+    else:
+      aSplineX.ClosedOff()
+      aSplineY.ClosedOff()
+      aSplineZ.ClosedOff()
 
     for i in range(0, nOfControlPoints):
       sourceNode.GetNthFiducialPosition(i, pos)
@@ -373,14 +378,23 @@ class CurveMakerLogic:
     t = r[0]
     p = 0
     tStep = (nOfControlPoints-1.0)/(nInterpolatedPoints-1.0)
-    while t < r[1]+1.0:
-      points.InsertPoint(p, aSplineX.Evaluate(t), aSplineY.Evaluate(t), aSplineZ.Evaluate(t))
-      t = t + tStep
-      p = p + 1
-    # Make sure to close the loop
-    points.InsertPoint(p, aSplineX.Evaluate(r[1]+1.0), aSplineY.Evaluate(r[1]+1.0), aSplineZ.Evaluate(r[1]+1.0))
+    nOutputPoints = 0
+
+    if closed:
+      while t < r[1]+1.0:
+        points.InsertPoint(p, aSplineX.Evaluate(t), aSplineY.Evaluate(t), aSplineZ.Evaluate(t))
+        t = t + tStep
+        p = p + 1
+      # Make sure to close the loop
+      points.InsertPoint(p, aSplineX.Evaluate(r[1]+1.0), aSplineY.Evaluate(r[1]+1.0), aSplineZ.Evaluate(r[1]+1.0))
+      nOutputPoints = p+1
+    else:
+      while t < r[1]:
+        points.InsertPoint(p, aSplineX.Evaluate(t), aSplineY.Evaluate(t), aSplineZ.Evaluate(t))
+        t = t + tStep
+        p = p + 1
+      nOutputPoints = p
     
-    nOutputPoints = p+1
     lines = vtk.vtkCellArray()
     lines.InsertNextCell(nOutputPoints)
     for i in range(0, nOutputPoints):
@@ -438,61 +452,25 @@ class CurveMakerLogic:
         else:
           self.nodeToPoly(self.SourceNode, self.CurvePoly, False)
 
-        tubeFilter = vtk.vtkTubeFilter()
-        tubeFilter.SetInputData(self.CurvePoly)
-        tubeFilter.SetRadius(self.TubeRadius)
-        tubeFilter.SetNumberOfSides(20)
-        tubeFilter.CappingOn()
-        tubeFilter.SetVaryRadiusToVaryRadiusByScalar()
-        tubeFilter.Update()
-        self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
-
       elif self.InterpolationMethod == 1: # Cardinal Spline
 
-        tubeFilter = vtk.vtkTubeFilter()
-        
         if self.RingMode > 0:
-          self.nodeToPolyClosedCardinalSpline(self.SourceNode, self.CurvePoly)
-          tubeFilter.SetInputData(self.CurvePoly)
+          self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, True)
         else:
-          self.nodeToPoly(self.SourceNode, self.CurvePoly)
-          splineFilter = vtk.vtkSplineFilter()
-          spline = vtk.vtkCardinalSpline()
-          spline.ClosedOff()
-
-          splineFilter.SetSpline(spline)
-          if vtk.VTK_MAJOR_VERSION <= 5:
-            splineFilter.SetInput(self.CurvePoly)
-          else:
-            splineFilter.SetInputData(self.CurvePoly)
-
-          #nInterpolatedPoints = self.NumberOfIntermediatePoints*(self.CurvePoly.GetPoints().GetNumberOfPoints()-1)        
-          #splineFilter.SetSubdivideToSpecified();
-          #splineFilter.SetNumberOfSubdivisions(nInterpolatedPoints)
-          splineFilter.Update()
-
-          #print splineFilter.GetSpline()
-          tubeFilter.SetInputConnection(splineFilter.GetOutputPort())
-          
-        tubeFilter.SetRadius(self.TubeRadius)
-        tubeFilter.SetNumberOfSides(20)
-        tubeFilter.CappingOn()
-        tubeFilter.Update()
-
-        self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
+          self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, False)
 
       elif self.InterpolationMethod == 2: # Hermite Spline
         
         endoscopyResult = EndoscopyComputePath(self.SourceNode)
         self.pathToPoly(endoscopyResult.path, self.CurvePoly)
 
-        tubeFilter = vtk.vtkTubeFilter()
-        tubeFilter.SetInputData(self.CurvePoly)
-        tubeFilter.SetRadius(self.TubeRadius)
-        tubeFilter.SetNumberOfSides(20)
-        tubeFilter.CappingOn()
-        tubeFilter.Update()
-        self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
+      tubeFilter = vtk.vtkTubeFilter()
+      tubeFilter.SetInputData(self.CurvePoly)
+      tubeFilter.SetRadius(self.TubeRadius)
+      tubeFilter.SetNumberOfSides(20)
+      tubeFilter.CappingOn()
+      tubeFilter.Update()
+      self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
 
       self.DestinationNode.Modified()
       
