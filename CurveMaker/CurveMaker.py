@@ -44,26 +44,28 @@ class CurveMakerWidget:
 
   def setup(self):
     # Instantiate and connect widgets ...
-
-    ####################
-    # For debugging
-    #
-    # Reload and Test area
-    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    reloadCollapsibleButton.text = "Reload && Test"
-    self.layout.addWidget(reloadCollapsibleButton)
-    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    self.RingOff = None
+    self.RingOn = None
     
-    # reload button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CurveMaker Reload"
-    reloadFormLayout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
+    #####################
+    ## For debugging
+    ##
+    ## Reload and Test area
+    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    #reloadCollapsibleButton.text = "Reload && Test"
+    #self.layout.addWidget(reloadCollapsibleButton)
+    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
     #
-    ####################
+    ## reload button
+    ## (use this during development, but remove it when delivering
+    ##  your module to users)
+    #self.reloadButton = qt.QPushButton("Reload")
+    #self.reloadButton.toolTip = "Reload this module."
+    #self.reloadButton.name = "CurveMaker Reload"
+    #reloadFormLayout.addWidget(self.reloadButton)
+    #self.reloadButton.connect('clicked()', self.onReload)
+    ##
+    #####################
 
     #
     # Parameters Area
@@ -234,12 +236,22 @@ class CurveMakerWidget:
 
   def onSelectInterpolationNone(self, s):
     self.logic.setInterpolationMethod(0)
+    if self.RingOn != None:
+      self.RingOn.enabled = True
 
   def onSelectInterpolationCardinalSpline(self, s):
     self.logic.setInterpolationMethod(1)
-
+    if self.RingOn != None:
+      self.RingOn.enabled = True
+    
   def onSelectInterpolationHermiteSpline(self, s):
     self.logic.setInterpolationMethod(2)
+    ## Currently Hermite Spline Interpolation does not support the ring mode 
+    if self.RingOn != None and self.RingOff != None:
+      self.RingOn.checked = False
+      self.logic.setRing(0)
+      self.RingOn.enabled = False
+      self.RingOff.checked = True
 
   def onRingOff(self, s):
     self.logic.setRing(0)
@@ -345,7 +357,7 @@ class CurveMakerLogic:
     outputPoly.SetLines(cellArray)
 
   def nodeToPolyCardinalSpline(self, sourceNode, outputPoly, closed=False):
-    
+
     nOfControlPoints = sourceNode.GetNumberOfFiducials()
     pos = [0.0, 0.0, 0.0]
 
@@ -385,8 +397,8 @@ class CurveMakerLogic:
         points.InsertPoint(p, aSplineX.Evaluate(t), aSplineY.Evaluate(t), aSplineZ.Evaluate(t))
         t = t + tStep
         p = p + 1
-      # Make sure to close the loop
-      points.InsertPoint(p, aSplineX.Evaluate(r[1]+1.0), aSplineY.Evaluate(r[1]+1.0), aSplineZ.Evaluate(r[1]+1.0))
+      ## Make sure to close the loop
+      points.InsertPoint(p, aSplineX.Evaluate(r[0]+tStep), aSplineY.Evaluate(r[0]+tStep), aSplineZ.Evaluate(r[0]+tStep))
       nOutputPoints = p+1
     else:
       while t < r[1]:
@@ -428,7 +440,11 @@ class CurveMakerLogic:
       linesIDArray.InsertNextTuple1(pointIndex)
       linesIDArray.SetTuple1( 0, linesIDArray.GetNumberOfTuples() - 1 )
       lines.SetNumberOfCells(1)
-    
+
+  def nodeToPolyHermiteSpline(self, sourceNode, outputPoly, closed=False):
+    endoscopyResult = EndoscopyComputePath(sourceNode)
+    self.pathToPoly(endoscopyResult.path, outputPoly)
+      
   def updateCurve(self):
 
     if self.AutomaticUpdate == False:
@@ -460,18 +476,20 @@ class CurveMakerLogic:
           self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, False)
 
       elif self.InterpolationMethod == 2: # Hermite Spline
-        
-        endoscopyResult = EndoscopyComputePath(self.SourceNode)
-        self.pathToPoly(endoscopyResult.path, self.CurvePoly)
 
+        if self.RingMode > 0:        
+          self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, True)
+        else:
+          self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, False)
+          
       tubeFilter = vtk.vtkTubeFilter()
       tubeFilter.SetInputData(self.CurvePoly)
       tubeFilter.SetRadius(self.TubeRadius)
       tubeFilter.SetNumberOfSides(20)
       tubeFilter.CappingOn()
       tubeFilter.Update()
-      self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
 
+      self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
       self.DestinationNode.Modified()
       
       if self.DestinationNode.GetScene() == None:
