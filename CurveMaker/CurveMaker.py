@@ -2,6 +2,7 @@ import os
 import unittest
 from __main__ import vtk, qt, ctk, slicer
 import math
+import numpy
 from Endoscopy import EndoscopyComputePath
 
 #
@@ -47,25 +48,25 @@ class CurveMakerWidget:
     self.RingOff = None
     self.RingOn = None
     
-    #####################
-    ## For debugging
-    ##
-    ## Reload and Test area
-    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    #reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
-    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    ####################
+    # For debugging
     #
-    ## reload button
-    ## (use this during development, but remove it when delivering
-    ##  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "CurveMaker Reload"
-    #reloadFormLayout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
-    ##
-    #####################
+    # Reload and Test area
+    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    reloadCollapsibleButton.text = "Reload && Test"
+    self.layout.addWidget(reloadCollapsibleButton)
+    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    
+    # reload button
+    # (use this during development, but remove it when delivering
+    #  your module to users)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "CurveMaker Reload"
+    reloadFormLayout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
+    #
+    ####################
 
     #
     # Parameters Area
@@ -180,6 +181,32 @@ class CurveMakerWidget:
     self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
     self.RadiusSliderWidget.connect("valueChanged(double)", self.onTubeUpdated)
 
+
+    #
+    # Measurements Area
+    #
+    measurementsCollapsibleButton = ctk.ctkCollapsibleButton()
+    measurementsCollapsibleButton.text = "Measurements"
+    self.layout.addWidget(measurementsCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    measurementsFormLayout = qt.QFormLayout(measurementsCollapsibleButton)
+
+    self.lengthLineEdit = qt.QLineEdit()
+    self.lengthLineEdit.text = '--'
+    self.lengthLineEdit.readOnly = True
+    self.lengthLineEdit.frame = True
+    self.lengthLineEdit.styleSheet = "QLineEdit { background:transparent; }"
+    self.lengthLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
+
+    lengthUnitLabel = qt.QLabel('mm')
+
+    lengthLayout = qt.QHBoxLayout()
+    lengthLayout.addWidget(self.lengthLineEdit)
+    lengthLayout.addWidget(lengthUnitLabel)
+
+    measurementsFormLayout.addRow("Curve length:", lengthLayout)
+
     # Add vertical spacer
     self.layout.addStretch(1)
     
@@ -283,6 +310,7 @@ class CurveMakerLogic:
     self.InterpolationMethod = 0
 
     self.RingMode = 0
+    self.CurveLength = -1.0  ## Length of the curve (<0 means 'not measured')
 
   def setNumberOfIntermediatePoints(self,npts):
     if npts > 0:
@@ -398,6 +426,8 @@ class CurveMakerLogic:
         t = t + tStep
         p = p + 1
       ## Make sure to close the loop
+      points.InsertPoint(p, aSplineX.Evaluate(r[0]), aSplineY.Evaluate(r[0]), aSplineZ.Evaluate(r[0]))
+      p = p + 1
       points.InsertPoint(p, aSplineX.Evaluate(r[0]+tStep), aSplineY.Evaluate(r[0]+tStep), aSplineZ.Evaluate(r[0]+tStep))
       nOutputPoints = p+1
     else:
@@ -444,6 +474,32 @@ class CurveMakerLogic:
   def nodeToPolyHermiteSpline(self, sourceNode, outputPoly, closed=False):
     endoscopyResult = EndoscopyComputePath(sourceNode)
     self.pathToPoly(endoscopyResult.path, outputPoly)
+
+  def calculateLineLength(self, poly):
+    lines = poly.GetLines()
+    points = poly.GetPoints()
+    pts = vtk.vtkIdList()
+
+    lines.GetCell(0, pts)
+    ip = numpy.array(points.GetPoint(pts.GetId(0)))
+    n = pts.GetNumberOfIds()
+
+    # Check if there is overlap between the first and last segments
+    # (for making sure to close the loop for spline curves)
+    slp = numpy.array(points.GetPoint(pts.GetId(n-2)))
+    # Check distance between the first point and the second last point
+    if numpy.linalg.norm(slp-ip) < 0.00001:
+      n = n - 1
+
+    length = 0.0
+    pp = ip
+    for i in range(1,n):
+      p = numpy.array(points.GetPoint(pts.GetId(i)))
+      length = length + numpy.linalg.norm(pp-p)
+      pp = p
+
+    return length
+
       
   def updateCurve(self):
 
@@ -482,6 +538,8 @@ class CurveMakerLogic:
         else:
           self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, False)
           
+      self.calculateLineLength(self.CurvePoly)
+
       tubeFilter = vtk.vtkTubeFilter()
       tubeFilter.SetInputData(self.CurvePoly)
       tubeFilter.SetRadius(self.TubeRadius)
