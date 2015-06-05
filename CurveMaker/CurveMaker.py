@@ -48,25 +48,25 @@ class CurveMakerWidget:
     self.RingOff = None
     self.RingOn = None
     
-    ####################
-    # For debugging
+    #####################
+    ## For debugging
+    ##
+    ## Reload and Test area
+    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    #reloadCollapsibleButton.text = "Reload && Test"
+    #self.layout.addWidget(reloadCollapsibleButton)
+    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
     #
-    # Reload and Test area
-    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    reloadCollapsibleButton.text = "Reload && Test"
-    self.layout.addWidget(reloadCollapsibleButton)
-    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-    
-    # reload button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CurveMaker Reload"
-    reloadFormLayout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
-    #
-    ####################
+    ## reload button
+    ## (use this during development, but remove it when delivering
+    ##  your module to users)
+    #self.reloadButton = qt.QPushButton("Reload")
+    #self.reloadButton.toolTip = "Reload this module."
+    #self.reloadButton.name = "CurveMaker Reload"
+    #reloadFormLayout.addWidget(self.reloadButton)
+    #self.reloadButton.connect('clicked()', self.onReload)
+    ##
+    #####################
 
     #
     # Parameters Area
@@ -420,7 +420,7 @@ class CurveMakerLogic:
     
     # Interpolate x, y and z by using the three spline filters and
     # create new points
-    nInterpolatedPoints = 400
+    nInterpolatedPoints = 50*nOfControlPoints # One section is devided into 50 segments
     points = vtk.vtkPoints()
     r = [0.0, 0.0]
     aSplineX.GetParametricRange(r)
@@ -438,7 +438,7 @@ class CurveMakerLogic:
       points.InsertPoint(p, aSplineX.Evaluate(r[0]), aSplineY.Evaluate(r[0]), aSplineZ.Evaluate(r[0]))
       p = p + 1
       points.InsertPoint(p, aSplineX.Evaluate(r[0]+tStep), aSplineY.Evaluate(r[0]+tStep), aSplineZ.Evaluate(r[0]+tStep))
-      nOutputPoints = p+1
+      nOutputPoints = p + 1
     else:
       while t < r[1]:
         points.InsertPoint(p, aSplineX.Evaluate(t), aSplineY.Evaluate(t), aSplineZ.Evaluate(t))
