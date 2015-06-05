@@ -243,6 +243,9 @@ class CurveMakerWidget:
     # Update destination node
     if self.DestinationSelector.currentNode():
       self.logic.DestinationNode = self.DestinationSelector.currentNode()
+      self.logic.DestinationNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelModifiedEvent)
+      ## TODO: Need to remove observer?
+
 
     # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
@@ -251,6 +254,8 @@ class CurveMakerWidget:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
       #self.logic.generateControlPolyData()
       self.logic.updateCurve()
+
+
 
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
@@ -285,6 +290,10 @@ class CurveMakerWidget:
 
   def onRingOn(self, s):
     self.logic.setRing(1)
+
+  def onModelModifiedEvent(self, caller, event):
+    self.lengthLineEdit.text = '%.2f' % self.logic.CurveLength
+
 
 #
 # CurveMakerLogic
@@ -471,9 +480,11 @@ class CurveMakerLogic:
       linesIDArray.SetTuple1( 0, linesIDArray.GetNumberOfTuples() - 1 )
       lines.SetNumberOfCells(1)
 
+
   def nodeToPolyHermiteSpline(self, sourceNode, outputPoly, closed=False):
     endoscopyResult = EndoscopyComputePath(sourceNode)
     self.pathToPoly(endoscopyResult.path, outputPoly)
+
 
   def calculateLineLength(self, poly):
     lines = poly.GetLines()
@@ -486,11 +497,12 @@ class CurveMakerLogic:
 
     # Check if there is overlap between the first and last segments
     # (for making sure to close the loop for spline curves)
-    slp = numpy.array(points.GetPoint(pts.GetId(n-2)))
-    # Check distance between the first point and the second last point
-    if numpy.linalg.norm(slp-ip) < 0.00001:
-      n = n - 1
-
+    if n > 2:
+      slp = numpy.array(points.GetPoint(pts.GetId(n-2)))
+      # Check distance between the first point and the second last point
+      if numpy.linalg.norm(slp-ip) < 0.00001:
+        n = n - 1
+        
     length = 0.0
     pp = ip
     for i in range(1,n):
@@ -508,37 +520,45 @@ class CurveMakerLogic:
 
     if self.SourceNode and self.DestinationNode:
 
-      if self.CurvePoly == None:
-        self.CurvePoly = vtk.vtkPolyData()
+      if self.SourceNode.GetNumberOfFiducials() < 2:
+        if self.CurvePoly == None:
+          self.CurvePoly.Initialize()
 
-      if self.DestinationNode.GetDisplayNodeID() == None:
-        modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-        modelDisplayNode.SetColor(self.ModelColor)
-        slicer.mrmlScene.AddNode(modelDisplayNode)
-        self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+        self.CurveLength = 0.0
 
-      if self.InterpolationMethod == 0:
+      else:
 
-        if self.RingMode > 0:
-          self.nodeToPoly(self.SourceNode, self.CurvePoly, True)
-        else:
-          self.nodeToPoly(self.SourceNode, self.CurvePoly, False)
-
-      elif self.InterpolationMethod == 1: # Cardinal Spline
-
-        if self.RingMode > 0:
-          self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, True)
-        else:
-          self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, False)
-
-      elif self.InterpolationMethod == 2: # Hermite Spline
-
-        if self.RingMode > 0:        
-          self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, True)
-        else:
-          self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, False)
+        if self.CurvePoly == None:
+          self.CurvePoly = vtk.vtkPolyData()
+        
+        if self.DestinationNode.GetDisplayNodeID() == None:
+          modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+          modelDisplayNode.SetColor(self.ModelColor)
+          slicer.mrmlScene.AddNode(modelDisplayNode)
+          self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+        
+        if self.InterpolationMethod == 0:
+        
+          if self.RingMode > 0:
+            self.nodeToPoly(self.SourceNode, self.CurvePoly, True)
+          else:
+            self.nodeToPoly(self.SourceNode, self.CurvePoly, False)
+        
+        elif self.InterpolationMethod == 1: # Cardinal Spline
+        
+          if self.RingMode > 0:
+            self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, True)
+          else:
+            self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, False)
+        
+        elif self.InterpolationMethod == 2: # Hermite Spline
+        
+          if self.RingMode > 0:        
+            self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, True)
+          else:
+            self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, False)
           
-      self.calculateLineLength(self.CurvePoly)
+        self.CurveLength = self.calculateLineLength(self.CurvePoly)
 
       tubeFilter = vtk.vtkTubeFilter()
       tubeFilter.SetInputData(self.CurvePoly)
