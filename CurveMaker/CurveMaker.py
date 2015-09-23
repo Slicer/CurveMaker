@@ -48,25 +48,25 @@ class CurveMakerWidget:
     self.RingOff = None
     self.RingOn = None
     
-    #####################
-    ## For debugging
-    ##
-    ## Reload and Test area
-    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    #reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
-    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    ####################
+    # For debugging
     #
-    ## reload button
-    ## (use this during development, but remove it when delivering
-    ##  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "CurveMaker Reload"
-    #reloadFormLayout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
-    ##
-    #####################
+    # Reload and Test area
+    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    reloadCollapsibleButton.text = "Reload && Test"
+    self.layout.addWidget(reloadCollapsibleButton)
+    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    
+    # reload button
+    # (use this during development, but remove it when delivering
+    #  your module to users)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "CurveMaker Reload"
+    reloadFormLayout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
+    #
+    ####################
 
     #
     # Parameters Area
@@ -119,7 +119,7 @@ class CurveMakerWidget:
     self.RadiusSliderWidget.maximum = 50.0
     self.RadiusSliderWidget.value = 5.0
     self.RadiusSliderWidget.setToolTip("Set the raidus of the tube.")
-    parametersFormLayout.addRow("Radius: ", self.RadiusSliderWidget)
+    parametersFormLayout.addRow("Radius (mm): ", self.RadiusSliderWidget)
 
     #
     # Radio button to select interpolation method
@@ -181,17 +181,15 @@ class CurveMakerWidget:
     self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
     self.RadiusSliderWidget.connect("valueChanged(double)", self.onTubeUpdated)
 
-
     #
     # Measurements Area
     #
     measurementsCollapsibleButton = ctk.ctkCollapsibleButton()
-    measurementsCollapsibleButton.text = "Measurements"
+    measurementsCollapsibleButton.text = "Measurements (Experimental)"
     self.layout.addWidget(measurementsCollapsibleButton)
-
-    # Layout within the dummy collapsible button
     measurementsFormLayout = qt.QFormLayout(measurementsCollapsibleButton)
 
+    # Curve length
     self.lengthLineEdit = qt.QLineEdit()
     self.lengthLineEdit.text = '--'
     self.lengthLineEdit.readOnly = True
@@ -199,14 +197,48 @@ class CurveMakerWidget:
     self.lengthLineEdit.styleSheet = "QLineEdit { background:transparent; }"
     self.lengthLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
 
-    lengthUnitLabel = qt.QLabel('mm')
+    #lengthUnitLabel = qt.QLabel('mm')
+    #
+    #lengthLayout = qt.QHBoxLayout()
+    #lengthLayout.addWidget(self.lengthLineEdit)
+    #lengthLayout.addWidget(lengthUnitLabel)
 
-    lengthLayout = qt.QHBoxLayout()
-    lengthLayout.addWidget(self.lengthLineEdit)
-    lengthLayout.addWidget(lengthUnitLabel)
+    #measurementsFormLayout.addRow("Curve length:", lengthLayout)
+    measurementsFormLayout.addRow("Length (mm):", self.lengthLineEdit)
 
-    measurementsFormLayout.addRow("Curve length:", lengthLayout)
+    # Point-to-curve distance
 
+    #  - Markups selector for input points
+    distanceLayout = qt.QVBoxLayout()
+
+    self.targetFiducialsSelector = slicer.qMRMLNodeComboBox()
+    self.targetFiducialsSelector.nodeTypes = ( ("vtkMRMLMarkupsFiducialNode"), "" )
+    self.targetFiducialsSelector.selectNodeUponCreation = True
+    self.targetFiducialsSelector.addEnabled = True
+    self.targetFiducialsSelector.removeEnabled = True
+    self.targetFiducialsSelector.noneEnabled = True
+    self.targetFiducialsSelector.showHidden = False
+    self.targetFiducialsSelector.showChildNodeTypes = False
+    self.targetFiducialsSelector.setMRMLScene( slicer.mrmlScene )
+    self.targetFiducialsSelector.setToolTip( "Select Markups for targets" )
+    distanceLayout.addWidget(self.targetFiducialsSelector)
+
+    self.targetFiducialsNode = None
+    self.tag = None
+    self.targetFiducialsSelector.connect("currentNodeChanged(vtkMRMLNode*)",
+                                         self.onTargetFiducialsSelected)
+      
+    self.fiducialsTable = qt.QTableWidget(1, 3)
+    self.fiducialsTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    self.fiducialsTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
+    self.fiducialsTableHeaders = ["Name", "Position (mm)", "Distance (mm)"]
+    self.fiducialsTable.setHorizontalHeaderLabels(self.fiducialsTableHeaders)
+    self.fiducialsTable.horizontalHeader().setStretchLastSection(True)
+    distanceLayout.addWidget(self.fiducialsTable)
+
+    measurementsFormLayout.addRow("Distance:", distanceLayout)
+    
+    
     # Add vertical spacer
     self.layout.addStretch(1)
     
@@ -293,7 +325,63 @@ class CurveMakerWidget:
 
   def onModelModifiedEvent(self, caller, event):
     self.lengthLineEdit.text = '%.2f' % self.logic.CurveLength
+    self.updateTargetFiducialsTable()
 
+  def onTargetFiducialsSelected(self):
+
+    # Remove observer if previous node exists
+    if self.targetFiducialsNode and self.tag:
+      self.targetFiducialsNode.RemoveObserver(self.tag)
+
+    # Update selected node, add observer, and update control points
+    if self.targetFiducialsSelector.currentNode():
+      self.targetFiducialsNode = self.targetFiducialsSelector.currentNode()
+      self.tag = self.targetFiducialsNode.AddObserver('ModifiedEvent', self.onTargetFiducialsUpdated)
+    else:
+      self.targetFiducialsNode = None
+      self.tag = None
+    self.updateTargetFiducialsTable()
+
+  def onTargetFiducialsUpdated(self,caller,event):
+    if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
+      self.updateTargetFiducialsTable()
+    
+  def updateTargetFiducialsTable(self):
+
+    if not self.targetFiducialsNode:
+      self.fiducialsTable.clear()
+      self.fiducialsTable.setHorizontalHeaderLabels(self.fiducialsTableHeaders)
+      
+    else:
+
+      self.fiducialsTableData = []
+      nOfControlPoints = self.targetFiducialsNode.GetNumberOfFiducials()
+
+      if self.fiducialsTable.rowCount != nOfControlPoints:
+        self.fiducialsTable.setRowCount(nOfControlPoints)
+
+      for i in range(nOfControlPoints):
+
+        label = self.targetFiducialsNode.GetNthFiducialLabel(i)
+        pos = [0.0, 0.0, 0.0]
+
+        self.targetFiducialsNode.GetNthFiducialPosition(i,pos)
+
+        posstr = '(%.3f, %.3f, %.3f)' % (pos[0], pos[1], pos[2])
+        dist =   '%.3f' %  self.logic.distanceToPoint(pos)
+
+        cellLabel = qt.QTableWidgetItem(label)
+        cellPosition = qt.QTableWidgetItem(posstr)
+        cellDistance = qt.QTableWidgetItem(dist)
+        row = [cellLabel, cellPosition, cellDistance]
+
+        self.fiducialsTable.setItem(i, 0, row[0])
+        self.fiducialsTable.setItem(i, 1, row[1])
+        self.fiducialsTable.setItem(i, 2, row[2])
+        self.fiducialsTableData.append(row)
+        
+    self.fiducialsTable.show()
+    
 
 #
 # CurveMakerLogic
@@ -512,7 +600,6 @@ class CurveMakerLogic:
 
     return length
 
-      
   def updateCurve(self):
 
     if self.AutomaticUpdate == False:
@@ -573,3 +660,66 @@ class CurveMakerLogic:
       if self.DestinationNode.GetScene() == None:
         slicer.mrmlScene.AddNode(self.DestinationNode)
         
+
+  def distanceToPoint(self, point):
+
+    # distanceToPoint() calculates the approximate minimum distance between
+    # the specified point and the closest segment of the curve.
+    # It calculates the minimum distance between the point and each segment
+    # of the curve (approxmated as a straight line) and select the segment with
+    # the minimum distance from the point as a closest segment.
+
+    npoint = numpy.array(point)
+
+    if self.CurvePoly == None:
+      return numpy.Inf
+
+    lines = self.CurvePoly.GetLines()
+    points = self.CurvePoly.GetPoints()
+    pts = vtk.vtkIdList()
+
+    lines.GetCell(0, pts)
+    ip = numpy.array(points.GetPoint(pts.GetId(0)))
+    n = pts.GetNumberOfIds()
+
+    # First point on the segment
+    p1 = ip
+
+    minMag2 = numpy.Inf
+    minIndex = -1
+
+    for i in range(1,n):
+      # Second point on the segment
+      p2 = numpy.array(points.GetPoint(pts.GetId(i)))
+
+      # Normal vector along the segment
+      nvec = p2-p1
+      norm = numpy.linalg.norm(nvec)
+      if norm != 0:
+        nnvec = nvec / norm
+
+      # Calculate the distance between the point and the segment
+      mag2 = 0.0
+
+      op = npoint - p1
+      aproj = numpy.inner(op, nnvec)
+      if aproj < 0.0:
+        d = npoint - p1
+        mag2 = numpy.inner(d, d)
+      elif aproj > norm:
+        d = npoint - p2
+        mag2 = numpy.inner(d, d)
+      else:
+        perp = op-aproj*nvec
+        mag2 = numpy.inner(perp,perp) # magnitude^2
+        
+      if mag2 < minMag2:
+        minMag2 = mag2
+        minIndex = i
+        
+      p1 = p2
+    
+    distance = numpy.sqrt(minMag2)
+
+    return distance
+
