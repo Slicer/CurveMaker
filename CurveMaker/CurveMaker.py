@@ -236,6 +236,13 @@ class CurveMakerWidget:
     self.fiducialsTable.horizontalHeader().setStretchLastSection(True)
     distanceLayout.addWidget(self.fiducialsTable)
 
+    self.extrapolateCheckBox = qt.QCheckBox()
+    self.extrapolateCheckBox.checked = 0
+    self.extrapolateCheckBox.setToolTip("Extrapolate the first and last segment to calculate the distance")
+    self.extrapolateCheckBox.connect('toggled(bool)', self.updateTargetFiducialsTable)
+    self.extrapolateCheckBox.text = 'Extrapolate curves'
+
+    distanceLayout.addWidget(self.extrapolateCheckBox)
     measurementsFormLayout.addRow("Distance:", distanceLayout)
     
     
@@ -353,7 +360,9 @@ class CurveMakerWidget:
       self.fiducialsTable.setHorizontalHeaderLabels(self.fiducialsTableHeaders)
       
     else:
-
+      
+      extrapolate = self.extrapolateCheckBox.isChecked()
+      
       self.fiducialsTableData = []
       nOfControlPoints = self.targetFiducialsNode.GetNumberOfFiducials()
 
@@ -368,7 +377,7 @@ class CurveMakerWidget:
         self.targetFiducialsNode.GetNthFiducialPosition(i,pos)
 
         posstr = '(%.3f, %.3f, %.3f)' % (pos[0], pos[1], pos[2])
-        dist =   '%.3f' %  self.logic.distanceToPoint(pos)
+        dist =   '%.3f' %  self.logic.distanceToPoint(pos, extrapolate)
 
         cellLabel = qt.QTableWidgetItem(label)
         cellPosition = qt.QTableWidgetItem(posstr)
@@ -661,7 +670,7 @@ class CurveMakerLogic:
         slicer.mrmlScene.AddNode(self.DestinationNode)
         
 
-  def distanceToPoint(self, point):
+  def distanceToPoint(self, point, extrapolate):
 
     # distanceToPoint() calculates the approximate minimum distance between
     # the specified point and the closest segment of the curve.
@@ -703,22 +712,28 @@ class CurveMakerLogic:
 
       op = npoint - p1
       aproj = numpy.inner(op, nnvec)
-      if aproj < 0.0:
-        d = npoint - p1
-        mag2 = numpy.inner(d, d)
-      elif aproj > norm:
-        d = npoint - p2
-        mag2 = numpy.inner(d, d)
-      else:
-        perp = op-aproj*nvec
+
+      if extrapolate and ((i == 1 and aproj < 0.0) or (i == n-1 and aproj > 0.0)):
+        # extrapolate first or last segment
+        perp = op-aproj*nnvec
         mag2 = numpy.inner(perp,perp) # magnitude^2
+      else:
+        if aproj < 0.0:
+          d = npoint - p1
+          mag2 = numpy.inner(d, d) # magnitude^2
+        elif aproj > norm:
+          d = npoint - p2
+          mag2 = numpy.inner(d, d) # magnitude^2
+        else:
+          perp = op-aproj*nnvec
+          mag2 = numpy.inner(perp,perp) # magnitude^2
         
       if mag2 < minMag2:
         minMag2 = mag2
         minIndex = i
-        
-      p1 = p2
     
+      p1 = p2
+
     distance = numpy.sqrt(minMag2)
 
     return distance
