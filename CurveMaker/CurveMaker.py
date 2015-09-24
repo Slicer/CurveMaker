@@ -173,7 +173,7 @@ class CurveMakerWidget:
     self.EnableCheckBox = qt.QCheckBox()
     self.EnableCheckBox.checked = 0
     self.EnableCheckBox.setToolTip("If checked, the CurveMaker module keeps updating the model as the points are updated.")
-    parametersFormLayout.addRow("Enable", self.EnableCheckBox)
+    parametersFormLayout.addRow("Enable:", self.EnableCheckBox)
 
     # Connections
     self.EnableCheckBox.connect('toggled(bool)', self.onEnable)
@@ -240,10 +240,17 @@ class CurveMakerWidget:
     self.extrapolateCheckBox.checked = 0
     self.extrapolateCheckBox.setToolTip("Extrapolate the first and last segment to calculate the distance")
     self.extrapolateCheckBox.connect('toggled(bool)', self.updateTargetFiducialsTable)
-    self.extrapolateCheckBox.text = 'Extrapolate curves'
+    self.extrapolateCheckBox.text = 'Extrapolate curves to measure the distances'
+
+    self.showErrorVectorCheckBox = qt.QCheckBox()
+    self.showErrorVectorCheckBox.checked = 0
+    self.showErrorVectorCheckBox.setToolTip("Show error vectors, which is defined by the target point and the closest point on the curve. The vector is perpendicular to the curve, unless the closest point is one end of the curve.")
+    self.showErrorVectorCheckBox.connect('toggled(bool)', self.updateTargetFiducialsTable)
+    self.showErrorVectorCheckBox.text = 'Show error vectors'
 
     distanceLayout.addWidget(self.extrapolateCheckBox)
-    measurementsFormLayout.addRow("Distance:", distanceLayout)
+    distanceLayout.addWidget(self.showErrorVectorCheckBox)
+    measurementsFormLayout.addRow("Distance from:", distanceLayout)
     
     
     # Add vertical spacer
@@ -362,6 +369,7 @@ class CurveMakerWidget:
     else:
       
       extrapolate = self.extrapolateCheckBox.isChecked()
+      showErrorVec = self.showErrorVectorCheckBox.isChecked()
       
       self.fiducialsTableData = []
       nOfControlPoints = self.targetFiducialsNode.GetNumberOfFiducials()
@@ -369,15 +377,20 @@ class CurveMakerWidget:
       if self.fiducialsTable.rowCount != nOfControlPoints:
         self.fiducialsTable.setRowCount(nOfControlPoints)
 
+      dist = ''
       for i in range(nOfControlPoints):
 
         label = self.targetFiducialsNode.GetNthFiducialLabel(i)
         pos = [0.0, 0.0, 0.0]
 
         self.targetFiducialsNode.GetNthFiducialPosition(i,pos)
+        (err, evec) = self.logic.distanceToPoint(pos, extrapolate)
 
         posstr = '(%.3f, %.3f, %.3f)' % (pos[0], pos[1], pos[2])
-        dist =   '%.3f' %  self.logic.distanceToPoint(pos, extrapolate)
+        if showErrorVec:
+          dist =   '%.3f (%.3f, %.3f, %.3f)' %  (err, evec[0], evec[1], evec[2])
+        else:
+          dist =   '%.3f' %  err
 
         cellLabel = qt.QTableWidgetItem(label)
         cellPosition = qt.QTableWidgetItem(posstr)
@@ -696,7 +709,9 @@ class CurveMakerLogic:
 
     minMag2 = numpy.Inf
     minIndex = -1
+    minErrVec = numpy.array([0.0, 0.0, 0.0])
 
+    errVec = numpy.array([0.0, 0.0, 0.0])
     for i in range(1,n):
       # Second point on the segment
       p2 = numpy.array(points.GetPoint(pts.GetId(i)))
@@ -715,26 +730,27 @@ class CurveMakerLogic:
 
       if extrapolate and ((i == 1 and aproj < 0.0) or (i == n-1 and aproj > 0.0)):
         # extrapolate first or last segment
-        perp = op-aproj*nnvec
-        mag2 = numpy.inner(perp,perp) # magnitude^2
+        errVec = op-aproj*nnvec  # perpendicular
+        mag2 = numpy.inner(errVec,errVec) # magnitude^2
       else:
         if aproj < 0.0:
-          d = npoint - p1
-          mag2 = numpy.inner(d, d) # magnitude^2
+          errVec = npoint - p1
+          mag2 = numpy.inner(errVec, errVec) # magnitude^2
         elif aproj > norm:
-          d = npoint - p2
-          mag2 = numpy.inner(d, d) # magnitude^2
+          errVec = npoint - p2
+          mag2 = numpy.inner(errVec, errVec) # magnitude^2
         else:
-          perp = op-aproj*nnvec
-          mag2 = numpy.inner(perp,perp) # magnitude^2
+          errVec = op-aproj*nnvec # perpendicular
+          mag2 = numpy.inner(errVec,errVec) # magnitude^2
         
       if mag2 < minMag2:
         minMag2 = mag2
         minIndex = i
+        minErrVec = errVec
     
       p1 = p2
 
     distance = numpy.sqrt(minMag2)
 
-    return distance
+    return (distance, minErrVec)
 
