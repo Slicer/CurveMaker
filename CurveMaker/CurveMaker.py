@@ -41,7 +41,7 @@ class CurveMakerWidget:
       self.setup()
       self.parent.show()
     self.logic = CurveMakerLogic()
-    self.tag = 0
+    #self.tag = 0
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -189,7 +189,7 @@ class CurveMakerWidget:
     self.layout.addWidget(measurementsCollapsibleButton)
     measurementsFormLayout = qt.QFormLayout(measurementsCollapsibleButton)
 
-    # Curve length
+    #-- Curve length
     self.lengthLineEdit = qt.QLineEdit()
     self.lengthLineEdit.text = '--'
     self.lengthLineEdit.readOnly = True
@@ -197,16 +197,9 @@ class CurveMakerWidget:
     self.lengthLineEdit.styleSheet = "QLineEdit { background:transparent; }"
     self.lengthLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
 
-    #lengthUnitLabel = qt.QLabel('mm')
-    #
-    #lengthLayout = qt.QHBoxLayout()
-    #lengthLayout.addWidget(self.lengthLineEdit)
-    #lengthLayout.addWidget(lengthUnitLabel)
-
-    #measurementsFormLayout.addRow("Curve length:", lengthLayout)
     measurementsFormLayout.addRow("Length (mm):", self.lengthLineEdit)
 
-    # Point-to-curve distance
+    #-- Point-to-curve distance
 
     #  - Markups selector for input points
     distanceLayout = qt.QVBoxLayout()
@@ -224,7 +217,10 @@ class CurveMakerWidget:
     distanceLayout.addWidget(self.targetFiducialsSelector)
 
     self.targetFiducialsNode = None
-    self.tag = None
+    self.tagSourceNode = None
+    self.tagDestinationNode = None
+    self.tagDestinationDispNode = None
+    
     self.targetFiducialsSelector.connect("currentNodeChanged(vtkMRMLNode*)",
                                          self.onTargetFiducialsSelected)
       
@@ -251,11 +247,87 @@ class CurveMakerWidget:
     distanceLayout.addWidget(self.extrapolateCheckBox)
     distanceLayout.addWidget(self.showErrorVectorCheckBox)
     measurementsFormLayout.addRow("Distance from:", distanceLayout)
+
+    #
+    # Curvature Area
+    #
+    curvatureCollapsibleButton = ctk.ctkCollapsibleButton()
+    curvatureCollapsibleButton.text = "Curvature (Experimental)"
+    self.layout.addWidget(curvatureCollapsibleButton)
+    curvatureFormLayout = qt.QFormLayout(curvatureCollapsibleButton)
+    
+    #-- Curvature
+    self.curvatureLayout = qt.QHBoxLayout()
+    self.curvatureOff = qt.QRadioButton("Off")
+    self.curvatureOff.connect('clicked(bool)', self.onCurvatureOff)
+    self.curvatureOn = qt.QRadioButton("On")
+    self.curvatureOn.connect('clicked(bool)', self.onCurvatureOn)
+    self.curvatureLayout.addWidget(self.curvatureOff)
+    self.curvatureLayout.addWidget(self.curvatureOn)
+
+    self.curvatureGroup = qt.QButtonGroup()
+    self.curvatureGroup.addButton(self.curvatureOff)
+    self.curvatureGroup.addButton(self.curvatureOn)
+
+    curvatureFormLayout.addRow("Curvature mode:", self.curvatureLayout)
+
+    #-- Curvature data
+    self.meanCurvatureLineEdit = qt.QLineEdit()
+    self.meanCurvatureLineEdit.text = '--'
+    self.meanCurvatureLineEdit.readOnly = True
+    self.meanCurvatureLineEdit.frame = True
+    self.meanCurvatureLineEdit.styleSheet = "QLineEdit { background:transparent; }"
+    self.meanCurvatureLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
+    self.meanCurvatureLineEdit.enabled = False    
+    curvatureFormLayout.addRow("Mean (mm^-1):", self.meanCurvatureLineEdit)
+
+    self.minCurvatureLineEdit = qt.QLineEdit()
+    self.minCurvatureLineEdit.text = '--'
+    self.minCurvatureLineEdit.readOnly = True
+    self.minCurvatureLineEdit.frame = True
+    self.minCurvatureLineEdit.styleSheet = "QLineEdit { background:transparent; }"
+    self.minCurvatureLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
+    self.minCurvatureLineEdit.enabled = False
+    curvatureFormLayout.addRow("Minimum (mm^-1):", self.minCurvatureLineEdit)
+
+    self.maxCurvatureLineEdit = qt.QLineEdit()
+    self.maxCurvatureLineEdit.text = '--'
+    self.maxCurvatureLineEdit.readOnly = True
+    self.maxCurvatureLineEdit.frame = True
+    self.maxCurvatureLineEdit.styleSheet = "QLineEdit { background:transparent; }"
+    self.maxCurvatureLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
+    self.maxCurvatureLineEdit.enabled = False
+    curvatureFormLayout.addRow("Maximum (mm^-1):", self.maxCurvatureLineEdit)
+
+    ## Create a scale for curvature
+    self.scalarBarWidget = vtk.vtkScalarBarWidget()
+    actor = self.scalarBarWidget.GetScalarBarActor()
+    actor.SetOrientationToVertical()
+    actor.SetNumberOfLabels(11)
+    actor.SetTitle("Curvature (mm^-1)")
+    actor.SetLabelFormat(" %#8.3f")
+    actor.SetPosition(0.1, 0.1)
+    actor.SetWidth(0.1)
+    actor.SetHeight(0.8)
+    self.scalarBarWidget.SetEnabled(0)    
+    
+    layout = slicer.app.layoutManager()
+    view = layout.threeDWidget(0).threeDView()
+    renderer = layout.activeThreeDRenderer()
+    self.scalarBarWidget.SetInteractor(renderer.GetRenderWindow().GetInteractor())
+    self.lookupTable = vtk.vtkLookupTable()
+    self.lookupTable.SetRange(0.0, 100.0)
+    self.scalarBarWidget.GetScalarBarActor().SetLookupTable(self.lookupTable)
+
+    ## default curvature mode: off
+    self.curvatureOff.setChecked(True)
+    self.onCurvatureOff(True)
     
     
     # Add vertical spacer
     self.layout.addStretch(1)
-    
+
+
   def cleanup(self):
     pass
 
@@ -264,8 +336,8 @@ class CurveMakerWidget:
 
   def onSourceSelected(self):
     # Remove observer if previous node exists
-    if self.logic.SourceNode and self.tag:
-      self.logic.SourceNode.RemoveObserver(self.tag)
+    if self.logic.SourceNode and self.tagSourceNode:
+      self.logic.SourceNode.RemoveObserver(self.tagSourceNode)
 
     # Update selected node, add observer, and update control points
     if self.SourceSelector.currentNode():
@@ -275,7 +347,7 @@ class CurveMakerWidget:
       tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
       self.DestinationSelector.setCurrentNodeID(tubeModelID)
 
-      self.tag = self.logic.SourceNode.AddObserver('ModifiedEvent', self.logic.controlPointsUpdated)
+      self.tagSourceNode = self.logic.SourceNode.AddObserver('ModifiedEvent', self.logic.controlPointsUpdated)
 
     # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
@@ -286,12 +358,18 @@ class CurveMakerWidget:
       self.logic.updateCurve()
 
   def onDestinationSelected(self):
+    if self.logic.DestinationNode and self.tagDestinationNode:
+      self.logic.DestinationNode.RemoveObserver(self.tagDestinationNode)
+      if self.logic.DestinationNode.GetDisplayNode() and self.tagDestinationDispNode:
+        self.logic.DestinationNode.GetDisplayNode().RemoveObserver(self.tagDestinationDispNode)
+    
     # Update destination node
     if self.DestinationSelector.currentNode():
       self.logic.DestinationNode = self.DestinationSelector.currentNode()
-      self.logic.DestinationNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelModifiedEvent)
-      ## TODO: Need to remove observer?
+      self.tagDestinationNode = self.logic.DestinationNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelModifiedEvent)
 
+      if self.logic.DestinationNode.GetDisplayNode():
+        self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
 
     # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
@@ -300,8 +378,6 @@ class CurveMakerWidget:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
       #self.logic.generateControlPolyData()
       self.logic.updateCurve()
-
-
 
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
@@ -337,10 +413,60 @@ class CurveMakerWidget:
   def onRingOn(self, s):
     self.logic.setRing(1)
 
+  def onCurvatureOff(self, s):
+    self.logic.setCurvature(0)
+    self.scalarBarWidget.SetEnabled(0)
+    if self.DestinationSelector.currentNode():
+      dispNode = self.DestinationSelector.currentNode().GetDisplayNode()
+      dispNode.ScalarVisibilityOff()
+    self.meanCurvatureLineEdit.enabled = False
+    self.minCurvatureLineEdit.enabled = False
+    self.maxCurvatureLineEdit.enabled = False
+    self.meanCurvatureLineEdit.text = '--'
+    self.minCurvatureLineEdit.text = '--'
+    self.maxCurvatureLineEdit.text = '--'
+    self.logic.updateCurve()
+
+  def onCurvatureOn(self, s):
+    self.logic.setCurvature(1)
+    self.scalarBarWidget.Modified()
+    self.scalarBarWidget.SetEnabled(1)
+    if self.DestinationSelector.currentNode():
+      dispNode = self.DestinationSelector.currentNode().GetDisplayNode()
+      colorTable = slicer.util.getNode('ColdToHotRainbow')
+      dispNode.SetAndObserveColorNodeID(colorTable.GetID())
+      dispNode.ScalarVisibilityOn()
+      dispNode.SetScalarRangeFlag(slicer.vtkMRMLModelDisplayNode.UseDisplayNodeScalarRange)
+      self.scalarBarWidget.GetScalarBarActor().SetLookupTable(colorTable.GetLookupTable())
+    self.meanCurvatureLineEdit.enabled = True
+    self.minCurvatureLineEdit.enabled = True
+    self.maxCurvatureLineEdit.enabled = True
+    self.logic.updateCurve()
+
   def onModelModifiedEvent(self, caller, event):
     self.lengthLineEdit.text = '%.2f' % self.logic.CurveLength
     self.updateTargetFiducialsTable()
 
+    if self.DestinationSelector.currentNode() and self.logic.Curvature:
+      dispNode = self.DestinationSelector.currentNode().GetDisplayNode()
+      colorTable = dispNode.GetColorNode()
+      if colorTable == None:
+        colorTable = slicer.util.getNode('ColdToHotRainbow')
+        dispNode.SetAndObserveColorNodeID(colorTable.GetID())
+      self.scalarBarWidget.GetScalarBarActor().SetLookupTable(colorTable.GetLookupTable())
+      srange = dispNode.GetScalarRange()
+      lut2 = self.scalarBarWidget.GetScalarBarActor().GetLookupTable()
+      lut2.SetRange(srange[0], srange[1])
+      summary = self.logic.getCurvatureSummary()
+      if summary != None:
+        self.meanCurvatureLineEdit.text = '%.6f' % summary['mean']
+        self.minCurvatureLineEdit.text = '%.6f' % summary['min']
+        self.maxCurvatureLineEdit.text = '%.6f' % summary['max']
+      
+  def onModelDisplayModifiedEvent(self, caller, event):
+    self.onModelModifiedEvent(caller, event)
+
+    
   def onTargetFiducialsSelected(self):
 
     # Remove observer if previous node exists
@@ -430,6 +556,10 @@ class CurveMakerLogic:
 
     self.RingMode = 0
     self.CurveLength = -1.0  ## Length of the curve (<0 means 'not measured')
+    self.Curvature = 0
+    self.curvatureMeanKappa = None
+    self.curvatureMinKappa = None
+    self.curvatureMaxKappa = None
 
   def setNumberOfIntermediatePoints(self,npts):
     if npts > 0:
@@ -449,6 +579,10 @@ class CurveMakerLogic:
 
   def setRing(self, switch):
     self.RingMode = switch
+    self.updateCurve()
+
+  def setCurvature(self, switch):
+    self.Curvature = switch
     self.updateCurve()
     
   def enableAutomaticUpdate(self, auto):
@@ -622,6 +756,80 @@ class CurveMakerLogic:
 
     return length
 
+
+  def computeCurvatures(self, poly, curvatureValues):
+    # Calculate point-by-point curvature of the curve
+    # Returns mean/min/max curvature
+    
+    lines = poly.GetLines()
+    points = poly.GetPoints()
+    pts = vtk.vtkIdList()
+
+    lines.GetCell(0, pts)
+    ip = numpy.array(points.GetPoint(pts.GetId(0)))
+    n = pts.GetNumberOfIds()
+
+    ## Check if there is overlap between the first and last segments
+    ## (for making sure to close the loop for spline curves)
+    #if n > 2:
+    #  slp = numpy.array(points.GetPoint(pts.GetId(n-2)))
+    #  # Check distance between the first point and the second last point
+    #  if numpy.linalg.norm(slp-ip) < 0.00001:
+    #    n = n - 1
+
+    curvatureValues.Initialize()
+    curvatureValues.SetName("Curvature")
+    curvatureValues.SetNumberOfComponents(1)
+    curvatureValues.SetNumberOfTuples(n)
+    curvatureValues.Reset()
+    curvatureValues.FillComponent(0,0.0)  
+
+    minKappa = 0.0
+    maxKappa = 0.0
+    meanKappa = 0.0   # NOTE: mean is weighted by the lengh of each segment
+    
+    pp = numpy.array(points.GetPoint(pts.GetId(0)))
+    p  = numpy.array(points.GetPoint(pts.GetId(1)))
+    ds = numpy.linalg.norm(p-pp)
+    pT = (p-pp) / ds
+    pp = p
+    pm = (p+pp)/2.0
+    length = 0.0 + numpy.linalg.norm(pm-pp)
+    
+    curvatureValues.InsertValue(pts.GetId(0), 0.0) # The curvature for the first cell is 0.0
+    
+    for i in range(1,n-1):
+      p = numpy.array(points.GetPoint(pts.GetId(i+1)))
+      ds = numpy.linalg.norm(p-pp)
+      T  = (p-pp) / ds
+      kappa = numpy.linalg.norm(T-pT) / ds # Curvature
+      curvatureValues.InsertValue(pts.GetId(i), kappa) # The curvature for the first cell is 0.0
+
+      m = (p+pp)/2.0 
+      l = numpy.linalg.norm(m-pm) # length for this segment
+      if kappa < minKappa:
+        minKappa = kappa
+      elif kappa > maxKappa:
+        maxKappa = kappa
+      meanKappa = meanKappa + kappa * l  # weighted mean
+      length = length + l
+
+      pp = p
+      pm = m
+      pT = T
+
+    curvatureValues.InsertValue(pts.GetId(n-1), 0.0) # The curvature for the first cell is 0.0
+    
+    length = length + numpy.linalg.norm(pp-pm)
+          
+    meanKappa = meanKappa / length
+    
+    # TODO: This routin does not consider a closed loop. If a closed loop is specified,
+    # It needs to calculate the curveture of two ends differently.
+
+    return (meanKappa, minKappa, maxKappa)
+
+  
   def updateCurve(self):
 
     if self.AutomaticUpdate == False:
@@ -670,6 +878,20 @@ class CurveMakerLogic:
         self.CurveLength = self.calculateLineLength(self.CurvePoly)
 
       tubeFilter = vtk.vtkTubeFilter()
+      curvatureValues = vtk.vtkDoubleArray()
+
+      if self.Curvature:
+        ## If the curvature option is ON, calculate the curvature along the curve.
+        (meanKappa, minKappa, maxKappa) = self.computeCurvatures(self.CurvePoly, curvatureValues)
+        self.CurvePoly.GetPointData().AddArray(curvatureValues)
+        self.curvatureMeanKappa = meanKappa
+        self.curvatureMinKappa = minKappa
+        self.curvatureMaxKappa = maxKappa
+      else:
+        self.curvatureMeanKappa = None
+        self.curvatureMinKappa = None
+        self.curvatureMaxKappa = None
+       
       tubeFilter.SetInputData(self.CurvePoly)
       tubeFilter.SetRadius(self.TubeRadius)
       tubeFilter.SetNumberOfSides(20)
@@ -681,7 +903,26 @@ class CurveMakerLogic:
       
       if self.DestinationNode.GetScene() == None:
         slicer.mrmlScene.AddNode(self.DestinationNode)
+
+      displayNode = self.DestinationNode.GetDisplayNode()
+      if displayNode:
+        if self.Curvature:
+          displayNode.SetActiveScalarName('Curvature')
+        else:
+          displayNode.SetActiveScalarName('')
         
+        
+  def getCurvatureSummary(self):
+
+    if self.Curvature:
+      summary = {}
+      summary['mean'] = self.curvatureMeanKappa
+      summary['min'] = self.curvatureMinKappa
+      summary['max'] = self.curvatureMaxKappa
+      return summary
+    else:
+      return None
+    
 
   def distanceToPoint(self, point, extrapolate):
 
