@@ -201,7 +201,7 @@ class CurveMakerWidget:
     # Curve Length area
     #
     lengthCollapsibleButton = ctk.ctkCollapsibleButton()
-    lengthCollapsibleButton.text = "Curve Length (Experimental)"
+    lengthCollapsibleButton.text = "Length (Experimental)"
     self.layout.addWidget(lengthCollapsibleButton)
     lengthFormLayout = qt.QFormLayout(lengthCollapsibleButton)
     lengthCollapsibleButton.collapsed = True
@@ -214,7 +214,7 @@ class CurveMakerWidget:
     self.lengthLineEdit.styleSheet = "QLineEdit { background:transparent; }"
     self.lengthLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
 
-    lengthFormLayout.addRow("Length (mm):", self.lengthLineEdit)
+    lengthFormLayout.addRow("Curve Length (mm):", self.lengthLineEdit)
 
     #
     # Distance Area
