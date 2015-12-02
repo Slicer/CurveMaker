@@ -184,10 +184,10 @@ class CurveMakerWidget:
     #
     # Measurements Area
     #
-    measurementsCollapsibleButton = ctk.ctkCollapsibleButton()
-    measurementsCollapsibleButton.text = "Measurements (Experimental)"
-    self.layout.addWidget(measurementsCollapsibleButton)
-    measurementsFormLayout = qt.QFormLayout(measurementsCollapsibleButton)
+    lengthCollapsibleButton = ctk.ctkCollapsibleButton()
+    lengthCollapsibleButton.text = "Curve Length (Experimental)"
+    self.layout.addWidget(lengthCollapsibleButton)
+    lengthFormLayout = qt.QFormLayout(lengthCollapsibleButton)
 
     #-- Curve length
     self.lengthLineEdit = qt.QLineEdit()
@@ -197,7 +197,15 @@ class CurveMakerWidget:
     self.lengthLineEdit.styleSheet = "QLineEdit { background:transparent; }"
     self.lengthLineEdit.cursor = qt.QCursor(qt.Qt.IBeamCursor)
 
-    measurementsFormLayout.addRow("Length (mm):", self.lengthLineEdit)
+    lengthFormLayout.addRow("Length (mm):", self.lengthLineEdit)
+
+    #
+    # Distance Area
+    #
+    distanceCollapsibleButton = ctk.ctkCollapsibleButton()
+    distanceCollapsibleButton.text = "Distance (Experimental)"
+    self.layout.addWidget(distanceCollapsibleButton)
+    distanceFormLayout = qt.QFormLayout(distanceCollapsibleButton)
 
     #-- Point-to-curve distance
 
@@ -246,7 +254,7 @@ class CurveMakerWidget:
 
     distanceLayout.addWidget(self.extrapolateCheckBox)
     distanceLayout.addWidget(self.showErrorVectorCheckBox)
-    measurementsFormLayout.addRow("Distance from:", distanceLayout)
+    distanceFormLayout.addRow("Distance from:", distanceLayout)
 
     #
     # Curvature Area
@@ -264,12 +272,37 @@ class CurveMakerWidget:
     self.curvatureOn.connect('clicked(bool)', self.onCurvatureOn)
     self.curvatureLayout.addWidget(self.curvatureOff)
     self.curvatureLayout.addWidget(self.curvatureOn)
-
     self.curvatureGroup = qt.QButtonGroup()
     self.curvatureGroup.addButton(self.curvatureOff)
     self.curvatureGroup.addButton(self.curvatureOn)
 
     curvatureFormLayout.addRow("Curvature mode:", self.curvatureLayout)
+
+    autoCurvatureRangeFormLayout = qt.QFormLayout(curvatureCollapsibleButton)
+    self.autoCurvatureRangeLayout = qt.QHBoxLayout()
+    self.autoCurvatureRangeOff = qt.QRadioButton("Manual")
+    self.autoCurvatureRangeOff.connect('clicked(bool)', self.onAutoCurvatureRangeOff)
+    self.autoCurvatureRangeOn = qt.QRadioButton("Auto")
+    self.autoCurvatureRangeOn.connect('clicked(bool)', self.onAutoCurvatureRangeOn)
+    self.autoCurvatureRangeLayout.addWidget(self.autoCurvatureRangeOff)
+    self.autoCurvatureRangeLayout.addWidget(self.autoCurvatureRangeOn)
+    self.autoCurvatureRangeGroup = qt.QButtonGroup()
+    self.autoCurvatureRangeGroup.addButton(self.autoCurvatureRangeOff)
+    self.autoCurvatureRangeGroup.addButton(self.autoCurvatureRangeOn)
+
+    curvatureFormLayout.addRow("Color range:", self.autoCurvatureRangeLayout)
+
+    #-- Color range
+    self.curvatureColorRangeWidget = ctk.ctkRangeWidget()
+    self.curvatureColorRangeWidget.setToolTip("Set color range")
+    self.curvatureColorRangeWidget.setDecimals(3)
+    self.curvatureColorRangeWidget.singleStep = 0.001
+    self.curvatureColorRangeWidget.minimumValue = 0.0
+    self.curvatureColorRangeWidget.maximumValue = 0.5
+    self.curvatureColorRangeWidget.minimum = 0.0
+    self.curvatureColorRangeWidget.maximum = 1.0
+    curvatureFormLayout.addRow("Color range: ", self.curvatureColorRangeWidget)
+    self.curvatureColorRangeWidget.connect('valuesChanged(double, double)', self.onUpdateCurvatureColorRange)
 
     #-- Curvature data
     self.meanCurvatureLineEdit = qt.QLineEdit()
@@ -322,7 +355,8 @@ class CurveMakerWidget:
     ## default curvature mode: off
     self.curvatureOff.setChecked(True)
     self.onCurvatureOff(True)
-    
+    self.autoCurvatureRangeOff.setChecked(True)
+    self.onAutoCurvatureRangeOff(True)
     
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -427,6 +461,7 @@ class CurveMakerWidget:
     self.maxCurvatureLineEdit.text = '--'
     self.logic.updateCurve()
 
+    
   def onCurvatureOn(self, s):
     self.logic.setCurvature(1)
     self.scalarBarWidget.Modified()
@@ -443,6 +478,43 @@ class CurveMakerWidget:
     self.maxCurvatureLineEdit.enabled = True
     self.logic.updateCurve()
 
+    
+  def onAutoCurvatureRangeOff(self, s):
+    self.curvatureColorRangeWidget.enabled = True
+    modelNode = self.DestinationSelector.currentNode()
+    if modelNode == None:
+      return
+    dispNode = modelNode.GetDisplayNode()
+    if dispNode == None:
+      return 
+    dispNode.AutoScalarRangeOff()
+
+    
+  def onAutoCurvatureRangeOn(self, s):
+    self.curvatureColorRangeWidget.enabled = False
+    modelNode = self.DestinationSelector.currentNode()
+    if modelNode == None:
+      return
+    dispNode = modelNode.GetDisplayNode()
+    if dispNode == None:
+      return 
+    dispNode.AutoScalarRangeOn()
+
+    
+  def onUpdateCurvatureColorRange(self, min, max):
+
+    modelNode = self.DestinationSelector.currentNode()
+    if modelNode == None:
+      return
+    
+    dispNode = modelNode.GetDisplayNode()
+    if dispNode == None:
+      return
+    
+    dispNode.SetScalarRange(min, max)
+    dispNode.Modified()
+
+    
   def onModelModifiedEvent(self, caller, event):
     self.lengthLineEdit.text = '%.2f' % self.logic.CurveLength
     self.updateTargetFiducialsTable()
@@ -462,6 +534,13 @@ class CurveMakerWidget:
         self.meanCurvatureLineEdit.text = '%.6f' % summary['mean']
         self.minCurvatureLineEdit.text = '%.6f' % summary['min']
         self.maxCurvatureLineEdit.text = '%.6f' % summary['max']
+        #self.curvatureColorRangeWidget.minimum = summary['min']
+        #self.curvatureColorRangeWidget.maximum = summary['max']
+      srange = dispNode.GetScalarRange()
+      if srange[0] != self.curvatureColorRangeWidget.minimumValue:
+        self.curvatureColorRangeWidget.minimumValue = srange[0]
+      if srange[1] != self.curvatureColorRangeWidget.maximumValue:
+        self.curvatureColorRangeWidget.maximumValue = srange[1]
       
   def onModelDisplayModifiedEvent(self, caller, event):
     self.onModelModifiedEvent(caller, event)
