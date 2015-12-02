@@ -531,6 +531,8 @@ class CurveMakerWidget:
     if self.logic.DestinationNode:
       dispNode = self.logic.DestinationNode.GetDisplayNode()
       if dispNode:
+        if self.autoCurvatureRangeOff.checked == True:
+          dispNode.AutoScalarRangeOff()
         dispNode.SetScalarRange(min, max)
         dispNode.Modified()
 
