@@ -47,6 +47,10 @@ class CurveMakerWidget:
     # Instantiate and connect widgets ...
     self.RingOff = None
     self.RingOn = None
+
+    # Tags to manage event observers
+    self.tagSourceNode = None
+    self.tagDestinationNode = None
     
     ####################
     # For debugging
@@ -225,8 +229,6 @@ class CurveMakerWidget:
     distanceLayout.addWidget(self.targetFiducialsSelector)
 
     self.targetFiducialsNode = None
-    self.tagSourceNode = None
-    self.tagDestinationNode = None
     self.tagDestinationDispNode = None
     
     self.targetFiducialsSelector.connect("currentNodeChanged(vtkMRMLNode*)",
@@ -365,9 +367,11 @@ class CurveMakerWidget:
   def cleanup(self):
     pass
 
+  
   def onEnable(self, state):
     self.logic.enableAutomaticUpdate(state)
 
+    
   def onSourceSelected(self):
     # Remove observer if previous node exists
     if self.logic.SourceNode and self.tagSourceNode:
@@ -380,7 +384,6 @@ class CurveMakerWidget:
       # Check if model has already been generated with for this fiducial list
       tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
       self.DestinationSelector.setCurrentNodeID(tubeModelID)
-
       self.tagSourceNode = self.logic.SourceNode.AddObserver('ModifiedEvent', self.logic.controlPointsUpdated)
 
     # Update checkbox
@@ -388,9 +391,9 @@ class CurveMakerWidget:
       self.EnableCheckBox.setCheckState(False)
     else:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
-      #self.logic.generateControlPolyData()
       self.logic.updateCurve()
 
+      
   def onDestinationSelected(self):
     if self.logic.DestinationNode and self.tagDestinationNode:
       self.logic.DestinationNode.RemoveObserver(self.tagDestinationNode)
@@ -410,28 +413,32 @@ class CurveMakerWidget:
       self.EnableCheckBox.setCheckState(False)
     else:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
-      #self.logic.generateControlPolyData()
       self.logic.updateCurve()
 
+      
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
 
+    
   def onReload(self,moduleName="CurveMaker"):
     """Generic reload method for any scripted module.
     ModuleWizard will subsitute correct default moduleName.
     """
     globals()[moduleName] = slicer.util.reloadScriptedModule(moduleName)
 
+    
   def onSelectInterpolationNone(self, s):
     self.logic.setInterpolationMethod(0)
     if self.RingOn != None:
       self.RingOn.enabled = True
 
+      
   def onSelectInterpolationCardinalSpline(self, s):
     self.logic.setInterpolationMethod(1)
     if self.RingOn != None:
       self.RingOn.enabled = True
-    
+
+      
   def onSelectInterpolationHermiteSpline(self, s):
     self.logic.setInterpolationMethod(2)
     ## Currently Hermite Spline Interpolation does not support the ring mode 
@@ -441,17 +448,20 @@ class CurveMakerWidget:
       self.RingOn.enabled = False
       self.RingOff.checked = True
 
+      
   def onRingOff(self, s):
     self.logic.setRing(0)
 
+    
   def onRingOn(self, s):
     self.logic.setRing(1)
 
+    
   def onCurvatureOff(self, s):
     self.logic.setCurvature(0)
     self.scalarBarWidget.SetEnabled(0)
-    if self.DestinationSelector.currentNode():
-      dispNode = self.DestinationSelector.currentNode().GetDisplayNode()
+    if self.logic.DestinationNode:
+      dispNode = self.logic.DestinationNode.GetDisplayNode()
       dispNode.ScalarVisibilityOff()
     self.meanCurvatureLineEdit.enabled = False
     self.minCurvatureLineEdit.enabled = False
@@ -466,8 +476,8 @@ class CurveMakerWidget:
     self.logic.setCurvature(1)
     self.scalarBarWidget.Modified()
     self.scalarBarWidget.SetEnabled(1)
-    if self.DestinationSelector.currentNode():
-      dispNode = self.DestinationSelector.currentNode().GetDisplayNode()
+    if self.logic.DestinationNode:
+      dispNode = self.logic.DestinationNode.GetDisplayNode()
       colorTable = slicer.util.getNode('ColdToHotRainbow')
       dispNode.SetAndObserveColorNodeID(colorTable.GetID())
       dispNode.ScalarVisibilityOn()
@@ -481,46 +491,34 @@ class CurveMakerWidget:
     
   def onAutoCurvatureRangeOff(self, s):
     self.curvatureColorRangeWidget.enabled = True
-    modelNode = self.DestinationSelector.currentNode()
-    if modelNode == None:
-      return
-    dispNode = modelNode.GetDisplayNode()
-    if dispNode == None:
-      return 
-    dispNode.AutoScalarRangeOff()
+    if self.logic.DestinationNode:
+      dispNode = self.logic.DestinationNode.GetDisplayNode()
+      if dispNode:
+        dispNode.AutoScalarRangeOff()
 
     
   def onAutoCurvatureRangeOn(self, s):
     self.curvatureColorRangeWidget.enabled = False
-    modelNode = self.DestinationSelector.currentNode()
-    if modelNode == None:
-      return
-    dispNode = modelNode.GetDisplayNode()
-    if dispNode == None:
-      return 
-    dispNode.AutoScalarRangeOn()
+    if self.logic.DestinationNode:
+      dispNode = self.logic.DestinationNode.GetDisplayNode()
+      if dispNode:
+        dispNode.AutoScalarRangeOn()
 
     
   def onUpdateCurvatureColorRange(self, min, max):
-
-    modelNode = self.DestinationSelector.currentNode()
-    if modelNode == None:
-      return
-    
-    dispNode = modelNode.GetDisplayNode()
-    if dispNode == None:
-      return
-    
-    dispNode.SetScalarRange(min, max)
-    dispNode.Modified()
+    if self.logic.DestinationNode:
+      dispNode = self.logic.DestinationNode.GetDisplayNode()
+      if dispNode:
+        dispNode.SetScalarRange(min, max)
+        dispNode.Modified()
 
     
   def onModelModifiedEvent(self, caller, event):
     self.lengthLineEdit.text = '%.2f' % self.logic.CurveLength
     self.updateTargetFiducialsTable()
 
-    if self.DestinationSelector.currentNode() and self.logic.Curvature:
-      dispNode = self.DestinationSelector.currentNode().GetDisplayNode()
+    if self.logic.DestinationNode and self.logic.Curvature:
+      dispNode = self.logic.DestinationNode.GetDisplayNode()
       colorTable = dispNode.GetColorNode()
       if colorTable == None:
         colorTable = slicer.util.getNode('ColdToHotRainbow')
@@ -534,14 +532,13 @@ class CurveMakerWidget:
         self.meanCurvatureLineEdit.text = '%.6f' % summary['mean']
         self.minCurvatureLineEdit.text = '%.6f' % summary['min']
         self.maxCurvatureLineEdit.text = '%.6f' % summary['max']
-        #self.curvatureColorRangeWidget.minimum = summary['min']
-        #self.curvatureColorRangeWidget.maximum = summary['max']
       srange = dispNode.GetScalarRange()
       if srange[0] != self.curvatureColorRangeWidget.minimumValue:
         self.curvatureColorRangeWidget.minimumValue = srange[0]
       if srange[1] != self.curvatureColorRangeWidget.maximumValue:
         self.curvatureColorRangeWidget.maximumValue = srange[1]
-      
+
+        
   def onModelDisplayModifiedEvent(self, caller, event):
     self.onModelModifiedEvent(caller, event)
 
@@ -561,10 +558,12 @@ class CurveMakerWidget:
       self.tag = None
     self.updateTargetFiducialsTable()
 
+    
   def onTargetFiducialsUpdated(self,caller,event):
     if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
       self.updateTargetFiducialsTable()
-    
+
+      
   def updateTargetFiducialsTable(self):
 
     if not self.targetFiducialsNode:
