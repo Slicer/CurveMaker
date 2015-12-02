@@ -113,7 +113,6 @@ class CurveMakerWidget:
     self.DestinationSelector.setToolTip( "Pick up or create a Model node." )
     parametersFormLayout.addRow("Curve model: ", self.DestinationSelector)
 
-
     #
     # Radius for the tube
     #
@@ -130,11 +129,8 @@ class CurveMakerWidget:
     #
     self.InterpolationLayout = qt.QHBoxLayout()
     self.InterpolationNone = qt.QRadioButton("None")
-    self.InterpolationNone.connect('clicked(bool)', self.onSelectInterpolationNone)
     self.InterpolationCardinalSpline = qt.QRadioButton("Cardinal Spline")
-    self.InterpolationCardinalSpline.connect('clicked(bool)', self.onSelectInterpolationCardinalSpline)
     self.InterpolationHermiteSpline = qt.QRadioButton("Hermite Spline (for Endoscopy)")
-    self.InterpolationHermiteSpline.connect('clicked(bool)', self.onSelectInterpolationHermiteSpline)
     self.InterpolationLayout.addWidget(self.InterpolationNone)
     self.InterpolationLayout.addWidget(self.InterpolationCardinalSpline)
     self.InterpolationLayout.addWidget(self.InterpolationHermiteSpline)
@@ -144,33 +140,33 @@ class CurveMakerWidget:
     self.InterpolationGroup.addButton(self.InterpolationCardinalSpline)
     self.InterpolationGroup.addButton(self.InterpolationHermiteSpline)
 
-    ## default interpolation method
-    self.InterpolationCardinalSpline.setChecked(True)
-    self.onSelectInterpolationCardinalSpline(True)
-
     parametersFormLayout.addRow("Interpolation: ", self.InterpolationLayout)
+
+    #
+    # Interpolation Resolution
+    #
+    self.InterpResolutionSliderWidget = ctk.ctkSliderWidget()
+    self.InterpResolutionSliderWidget.singleStep = 1.0
+    self.InterpResolutionSliderWidget.minimum = 5.0
+    self.InterpResolutionSliderWidget.maximum = 50.0
+    self.InterpResolutionSliderWidget.value = 25.0
+    self.InterpResolutionSliderWidget.setToolTip("Number of interpolation points between control points. Default is 25.")
+    parametersFormLayout.addRow("Resolution: ", self.InterpResolutionSliderWidget)
 
     #
     # Radio button for ring mode
     #
     self.RingLayout = qt.QHBoxLayout()
     self.RingOff = qt.QRadioButton("Off")
-    self.RingOff.connect('clicked(bool)', self.onRingOff)
     self.RingOn = qt.QRadioButton("On")
-    self.RingOn.connect('clicked(bool)', self.onRingOn)
     self.RingLayout.addWidget(self.RingOff)
     self.RingLayout.addWidget(self.RingOn)
-    
     self.RingGroup = qt.QButtonGroup()
     self.RingGroup.addButton(self.RingOff)
     self.RingGroup.addButton(self.RingOn)
 
-    ## default ring mode
-    self.RingOff.setChecked(True)
-    self.onRingOff(True)
-
     parametersFormLayout.addRow("Ring mode: ", self.RingLayout)
-    
+
     #
     # Check box to start curve visualization
     #
@@ -180,18 +176,35 @@ class CurveMakerWidget:
     parametersFormLayout.addRow("Enable:", self.EnableCheckBox)
 
     # Connections
+    self.InterpolationNone.connect('clicked(bool)', self.onSelectInterpolationNone)
+    self.InterpolationCardinalSpline.connect('clicked(bool)', self.onSelectInterpolationCardinalSpline)
+    self.InterpolationHermiteSpline.connect('clicked(bool)', self.onSelectInterpolationHermiteSpline)
+    self.RingOff.connect('clicked(bool)', self.onRingOff)
+    self.RingOn.connect('clicked(bool)', self.onRingOn)
     self.EnableCheckBox.connect('toggled(bool)', self.onEnable)
     self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSourceSelected)
     self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
     self.RadiusSliderWidget.connect("valueChanged(double)", self.onTubeUpdated)
+    self.InterpResolutionSliderWidget.connect("valueChanged(double)", self.onInterpResolutionUpdated)
 
+    # Set default
+    ## default interpolation method
+    self.InterpolationCardinalSpline.setChecked(True)
+    self.onSelectInterpolationCardinalSpline(True)
+
+    ## default ring mode
+    self.RingOff.setChecked(True)
+    self.onRingOff(True)
+
+    
     #
-    # Measurements Area
+    # Curve Length area
     #
     lengthCollapsibleButton = ctk.ctkCollapsibleButton()
     lengthCollapsibleButton.text = "Curve Length (Experimental)"
     self.layout.addWidget(lengthCollapsibleButton)
     lengthFormLayout = qt.QFormLayout(lengthCollapsibleButton)
+    lengthCollapsibleButton.collapsed = True
 
     #-- Curve length
     self.lengthLineEdit = qt.QLineEdit()
@@ -208,6 +221,7 @@ class CurveMakerWidget:
     #
     distanceCollapsibleButton = ctk.ctkCollapsibleButton()
     distanceCollapsibleButton.text = "Distance (Experimental)"
+    distanceCollapsibleButton.collapsed = True
     self.layout.addWidget(distanceCollapsibleButton)
     distanceFormLayout = qt.QFormLayout(distanceCollapsibleButton)
 
@@ -263,6 +277,7 @@ class CurveMakerWidget:
     #
     curvatureCollapsibleButton = ctk.ctkCollapsibleButton()
     curvatureCollapsibleButton.text = "Curvature (Experimental)"
+    curvatureCollapsibleButton.collapsed = True 
     self.layout.addWidget(curvatureCollapsibleButton)
     curvatureFormLayout = qt.QFormLayout(curvatureCollapsibleButton)
     
@@ -420,6 +435,10 @@ class CurveMakerWidget:
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
 
     
+  def onInterpResolutionUpdated(self):
+    self.logic.setInterpResolution(self.InterpResolutionSliderWidget.value)
+
+    
   def onReload(self,moduleName="CurveMaker"):
     """Generic reload method for any scripted module.
     ModuleWizard will subsitute correct default moduleName.
@@ -429,18 +448,21 @@ class CurveMakerWidget:
     
   def onSelectInterpolationNone(self, s):
     self.logic.setInterpolationMethod(0)
+    self.InterpResolutionSliderWidget.enabled = True
     if self.RingOn != None:
       self.RingOn.enabled = True
 
       
   def onSelectInterpolationCardinalSpline(self, s):
     self.logic.setInterpolationMethod(1)
+    self.InterpResolutionSliderWidget.enabled = True
     if self.RingOn != None:
       self.RingOn.enabled = True
 
       
   def onSelectInterpolationHermiteSpline(self, s):
     self.logic.setInterpolationMethod(2)
+    self.InterpResolutionSliderWidget.enabled = False
     ## Currently Hermite Spline Interpolation does not support the ring mode 
     if self.RingOn != None and self.RingOff != None:
       self.RingOn.checked = False
@@ -519,24 +541,25 @@ class CurveMakerWidget:
 
     if self.logic.DestinationNode and self.logic.Curvature:
       dispNode = self.logic.DestinationNode.GetDisplayNode()
-      colorTable = dispNode.GetColorNode()
-      if colorTable == None:
-        colorTable = slicer.util.getNode('ColdToHotRainbow')
-        dispNode.SetAndObserveColorNodeID(colorTable.GetID())
-      self.scalarBarWidget.GetScalarBarActor().SetLookupTable(colorTable.GetLookupTable())
-      srange = dispNode.GetScalarRange()
-      lut2 = self.scalarBarWidget.GetScalarBarActor().GetLookupTable()
-      lut2.SetRange(srange[0], srange[1])
-      summary = self.logic.getCurvatureSummary()
-      if summary != None:
-        self.meanCurvatureLineEdit.text = '%.6f' % summary['mean']
-        self.minCurvatureLineEdit.text = '%.6f' % summary['min']
-        self.maxCurvatureLineEdit.text = '%.6f' % summary['max']
-      srange = dispNode.GetScalarRange()
-      if srange[0] != self.curvatureColorRangeWidget.minimumValue:
-        self.curvatureColorRangeWidget.minimumValue = srange[0]
-      if srange[1] != self.curvatureColorRangeWidget.maximumValue:
-        self.curvatureColorRangeWidget.maximumValue = srange[1]
+      if dispNode:
+        colorTable = dispNode.GetColorNode()
+        if colorTable == None:
+          colorTable = slicer.util.getNode('ColdToHotRainbow')
+          dispNode.SetAndObserveColorNodeID(colorTable.GetID())
+        self.scalarBarWidget.GetScalarBarActor().SetLookupTable(colorTable.GetLookupTable())
+        srange = dispNode.GetScalarRange()
+        lut2 = self.scalarBarWidget.GetScalarBarActor().GetLookupTable()
+        lut2.SetRange(srange[0], srange[1])
+        summary = self.logic.getCurvatureSummary()
+        if summary != None:
+          self.meanCurvatureLineEdit.text = '%.6f' % summary['mean']
+          self.minCurvatureLineEdit.text = '%.6f' % summary['min']
+          self.maxCurvatureLineEdit.text = '%.6f' % summary['max']
+        srange = dispNode.GetScalarRange()
+        if srange[0] != self.curvatureColorRangeWidget.minimumValue:
+          self.curvatureColorRangeWidget.minimumValue = srange[0]
+        if srange[1] != self.curvatureColorRangeWidget.maximumValue:
+          self.curvatureColorRangeWidget.maximumValue = srange[1]
 
         
   def onModelDisplayModifiedEvent(self, caller, event):
@@ -625,6 +648,7 @@ class CurveMakerLogic:
     self.ModelColor = [0.0, 0.0, 1.0]
 
     self.CurvePoly = None
+    self.interpResolution = 25
     
     # Interpolation method:
     #  0: None
@@ -661,6 +685,11 @@ class CurveMakerLogic:
 
   def setCurvature(self, switch):
     self.Curvature = switch
+    self.updateCurve()
+
+  def setInterpResolution(self, res):
+    ## Resoution is specified as the number of interpolation points between two consecutive control points
+    self.interpResolution = res
     self.updateCurve()
     
   def enableAutomaticUpdate(self, auto):
@@ -742,7 +771,7 @@ class CurveMakerLogic:
     
     # Interpolate x, y and z by using the three spline filters and
     # create new points
-    nInterpolatedPoints = 50*nOfControlPoints # One section is devided into 50 segments
+    nInterpolatedPoints = (self.interpResolution+2)*(nOfControlPoints-1) # One section is devided into self.interpResolution segments
     points = vtk.vtkPoints()
     r = [0.0, 0.0]
     aSplineX.GetParametricRange(r)
@@ -875,7 +904,7 @@ class CurveMakerLogic:
     length = 0.0 + numpy.linalg.norm(pm-pp)
     
     curvatureValues.InsertValue(pts.GetId(0), 0.0) # The curvature for the first cell is 0.0
-    
+
     for i in range(1,n-1):
       p = numpy.array(points.GetPoint(pts.GetId(i+1)))
       ds = numpy.linalg.norm(p-pp)
@@ -896,7 +925,7 @@ class CurveMakerLogic:
       pm = m
       pT = T
 
-    curvatureValues.InsertValue(pts.GetId(n-1), 0.0) # The curvature for the first cell is 0.0
+    curvatureValues.InsertValue(pts.GetId(n-1), 0.0) # The curvature for the last cell is 0.0
     
     length = length + numpy.linalg.norm(pp-pm)
           
