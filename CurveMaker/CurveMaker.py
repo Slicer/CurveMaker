@@ -525,7 +525,7 @@ class CurveMakerWidget:
       dispNode = self.logic.DestinationNode.GetDisplayNode()
       if dispNode:
         dispNode.AutoScalarRangeOn()
-
+        self.updateCurvatureInterface()
     
   def onUpdateCurvatureColorRange(self, min, max):
     if self.logic.DestinationNode:
@@ -540,7 +540,14 @@ class CurveMakerWidget:
   def onModelModifiedEvent(self, caller, event):
     self.lengthLineEdit.text = '%.2f' % self.logic.CurveLength
     self.updateTargetFiducialsTable()
+    self.updateCurvatureInterface()
 
+        
+  def onModelDisplayModifiedEvent(self, caller, event):
+    self.updateCurvatureInterface()
+
+
+  def updateCurvatureInterface(self):
     if self.logic.DestinationNode and self.logic.Curvature:
       dispNode = self.logic.DestinationNode.GetDisplayNode()
       if dispNode:
@@ -562,11 +569,7 @@ class CurveMakerWidget:
           self.curvatureColorRangeWidget.minimumValue = srange[0]
         if srange[1] != self.curvatureColorRangeWidget.maximumValue:
           self.curvatureColorRangeWidget.maximumValue = srange[1]
-
-        
-  def onModelDisplayModifiedEvent(self, caller, event):
-    self.onModelModifiedEvent(caller, event)
-
+    
     
   def onTargetFiducialsSelected(self):
 
