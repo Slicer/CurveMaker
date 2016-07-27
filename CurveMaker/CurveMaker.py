@@ -52,25 +52,25 @@ class CurveMakerWidget:
     self.tagSourceNode = None
     self.tagDestinationNode = None
     
-    ####################
-    # For debugging
+    #####################
+    ## For debugging
+    ##
+    ## Reload and Test area
+    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    #reloadCollapsibleButton.text = "Reload && Test"
+    #self.layout.addWidget(reloadCollapsibleButton)
+    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
     #
-    # Reload and Test area
-    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    reloadCollapsibleButton.text = "Reload && Test"
-    self.layout.addWidget(reloadCollapsibleButton)
-    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-    
-    # reload button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CurveMaker Reload"
-    reloadFormLayout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
-    #
-    ####################
+    ## reload button
+    ## (use this during development, but remove it when delivering
+    ##  your module to users)
+    #self.reloadButton = qt.QPushButton("Reload")
+    #self.reloadButton.toolTip = "Reload this module."
+    #self.reloadButton.name = "CurveMaker Reload"
+    #reloadFormLayout.addWidget(self.reloadButton)
+    #self.reloadButton.connect('clicked()', self.onReload)
+    ##
+    #####################
 
     #
     # Parameters Area
@@ -170,22 +170,31 @@ class CurveMakerWidget:
     #
     # Check box to start curve visualization
     #
-    self.EnableCheckBox = qt.QCheckBox()
-    self.EnableCheckBox.checked = 0
-    self.EnableCheckBox.setToolTip("If checked, the CurveMaker module keeps updating the model as the points are updated.")
-    parametersFormLayout.addRow("Enable:", self.EnableCheckBox)
+    self.EnableAutoUpdateCheckBox = qt.QCheckBox()
+    self.EnableAutoUpdateCheckBox.checked = 0
+    self.EnableAutoUpdateCheckBox.setToolTip("If checked, the CurveMaker module keeps updating the model as the points are updated.")
+    parametersFormLayout.addRow("Auto update:", self.EnableAutoUpdateCheckBox)
 
+    #
+    # Button to generate a curve
+    #
+    self.GenerateButton = qt.QPushButton("Generate Curve")
+    self.GenerateButton.toolTip = "Generate Curve"
+    self.GenerateButton.enabled = True
+    parametersFormLayout.addRow("", self.GenerateButton)
+    
     # Connections
     self.InterpolationNone.connect('clicked(bool)', self.onSelectInterpolationNone)
     self.InterpolationCardinalSpline.connect('clicked(bool)', self.onSelectInterpolationCardinalSpline)
     self.InterpolationHermiteSpline.connect('clicked(bool)', self.onSelectInterpolationHermiteSpline)
     self.RingOff.connect('clicked(bool)', self.onRingOff)
     self.RingOn.connect('clicked(bool)', self.onRingOn)
-    self.EnableCheckBox.connect('toggled(bool)', self.onEnable)
+    self.EnableAutoUpdateCheckBox.connect('toggled(bool)', self.onEnableAutoUpdate)
     self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSourceSelected)
     self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
     self.RadiusSliderWidget.connect("valueChanged(double)", self.onTubeUpdated)
     self.InterpResolutionSliderWidget.connect("valueChanged(double)", self.onInterpResolutionUpdated)
+    self.GenerateButton.connect('clicked(bool)', self.onGenerateCurve)
 
     # Set default
     ## default interpolation method
@@ -201,7 +210,7 @@ class CurveMakerWidget:
     # Curve Length area
     #
     lengthCollapsibleButton = ctk.ctkCollapsibleButton()
-    lengthCollapsibleButton.text = "Length (Experimental)"
+    lengthCollapsibleButton.text = "Length"
     self.layout.addWidget(lengthCollapsibleButton)
     lengthFormLayout = qt.QFormLayout(lengthCollapsibleButton)
     lengthCollapsibleButton.collapsed = True
@@ -220,7 +229,7 @@ class CurveMakerWidget:
     # Distance Area
     #
     distanceCollapsibleButton = ctk.ctkCollapsibleButton()
-    distanceCollapsibleButton.text = "Distance (Experimental)"
+    distanceCollapsibleButton.text = "Distance"
     distanceCollapsibleButton.collapsed = True
     self.layout.addWidget(distanceCollapsibleButton)
     distanceFormLayout = qt.QFormLayout(distanceCollapsibleButton)
@@ -276,7 +285,7 @@ class CurveMakerWidget:
     # Curvature Area
     #
     curvatureCollapsibleButton = ctk.ctkCollapsibleButton()
-    curvatureCollapsibleButton.text = "Curvature (Experimental)"
+    curvatureCollapsibleButton.text = "Curvature"
     curvatureCollapsibleButton.collapsed = True 
     self.layout.addWidget(curvatureCollapsibleButton)
     curvatureFormLayout = qt.QFormLayout(curvatureCollapsibleButton)
@@ -382,10 +391,11 @@ class CurveMakerWidget:
   def cleanup(self):
     pass
 
-  
-  def onEnable(self, state):
+  def onEnableAutoUpdate(self, state):
     self.logic.enableAutomaticUpdate(state)
 
+  def onGenerateCurve(self):
+    self.logic.generateCurveOnce()
     
   def onSourceSelected(self):
     # Remove observer if previous node exists
@@ -403,7 +413,7 @@ class CurveMakerWidget:
 
     # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
-      self.EnableCheckBox.setCheckState(False)
+      self.EnableAutoUpdateCheckBox.setCheckState(False)
     else:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
       self.logic.updateCurve()
@@ -425,7 +435,7 @@ class CurveMakerWidget:
 
     # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
-      self.EnableCheckBox.setCheckState(False)
+      self.EnableAutoUpdateCheckBox.setCheckState(False)
     else:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
       self.logic.updateCurve()
@@ -492,7 +502,7 @@ class CurveMakerWidget:
     self.minCurvatureLineEdit.text = '--'
     self.maxCurvatureLineEdit.text = '--'
     self.logic.updateCurve()
-
+    
     
   def onCurvatureOn(self, s):
     self.logic.setCurvature(1)
@@ -508,7 +518,8 @@ class CurveMakerWidget:
     self.meanCurvatureLineEdit.enabled = True
     self.minCurvatureLineEdit.enabled = True
     self.maxCurvatureLineEdit.enabled = True
-    self.logic.updateCurve()
+    #self.logic.updateCurve()
+    self.logic.generateCurveOnce()
 
     
   def onAutoCurvatureRangeOff(self, s):
@@ -700,6 +711,12 @@ class CurveMakerLogic:
   def enableAutomaticUpdate(self, auto):
     self.AutomaticUpdate = auto
     self.updateCurve()
+
+  def generateCurveOnce(self):
+    prevAutomaticUpdate = self.AutomaticUpdate
+    self.AutomaticUpdate = True
+    self.updateCurve()
+    self.AutomaticUpdate = prevAutomaticUpdate
 
   def controlPointsUpdated(self,caller,event):
     if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
