@@ -502,7 +502,7 @@ class CurveMakerWidget:
     self.minCurvatureLineEdit.text = '--'
     self.maxCurvatureLineEdit.text = '--'
     self.logic.updateCurve()
-
+    
     
   def onCurvatureOn(self, s):
     self.logic.setCurvature(1)
@@ -518,7 +518,8 @@ class CurveMakerWidget:
     self.meanCurvatureLineEdit.enabled = True
     self.minCurvatureLineEdit.enabled = True
     self.maxCurvatureLineEdit.enabled = True
-    self.logic.updateCurve()
+    #self.logic.updateCurve()
+    self.logic.generateCurveOnce()
 
     
   def onAutoCurvatureRangeOff(self, s):
