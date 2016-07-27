@@ -52,25 +52,25 @@ class CurveMakerWidget:
     self.tagSourceNode = None
     self.tagDestinationNode = None
     
-    ####################
-    # For debugging
+    #####################
+    ## For debugging
+    ##
+    ## Reload and Test area
+    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    #reloadCollapsibleButton.text = "Reload && Test"
+    #self.layout.addWidget(reloadCollapsibleButton)
+    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
     #
-    # Reload and Test area
-    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    reloadCollapsibleButton.text = "Reload && Test"
-    self.layout.addWidget(reloadCollapsibleButton)
-    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-    
-    # reload button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CurveMaker Reload"
-    reloadFormLayout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
-    #
-    ####################
+    ## reload button
+    ## (use this during development, but remove it when delivering
+    ##  your module to users)
+    #self.reloadButton = qt.QPushButton("Reload")
+    #self.reloadButton.toolTip = "Reload this module."
+    #self.reloadButton.name = "CurveMaker Reload"
+    #reloadFormLayout.addWidget(self.reloadButton)
+    #self.reloadButton.connect('clicked()', self.onReload)
+    ##
+    #####################
 
     #
     # Parameters Area
