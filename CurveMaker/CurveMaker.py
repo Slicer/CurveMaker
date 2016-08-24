@@ -967,7 +967,7 @@ class CurveMakerLogic:
     if self.SourceNode and self.DestinationNode:
 
       if self.SourceNode.GetNumberOfFiducials() < 2:
-        if self.CurvePoly == None:
+        if self.CurvePoly != None:
           self.CurvePoly.Initialize()
 
         self.CurveLength = 0.0
