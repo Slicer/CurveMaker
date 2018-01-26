@@ -375,76 +375,30 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     self.scalarBarWidget.SetEnabled(0)
 
     #
-    # Segment Area
+    # Export Interpolated Points
     #
-    segmentCollapsibleButton = ctk.ctkCollapsibleButton()
-    segmentCollapsibleButton.text = "Segments"
-    segmentCollapsibleButton.collapsed = True
-    self.layout.addWidget(segmentCollapsibleButton)
-    segmentFormLayout = qt.QFormLayout(segmentCollapsibleButton)
-
-    # -- Point-to-curve distance
-
-    self.segmentFiducialsSelector = slicer.qMRMLNodeComboBox()
-    self.segmentFiducialsSelector.nodeTypes = (("vtkMRMLMarkupsFiducialNode"), "")
-    self.segmentFiducialsSelector.selectNodeUponCreation = True
-    self.segmentFiducialsSelector.addEnabled = True
-    self.segmentFiducialsSelector.removeEnabled = True
-    self.segmentFiducialsSelector.noneEnabled = True
-    self.segmentFiducialsSelector.showHidden = False
-    self.segmentFiducialsSelector.showChildNodeTypes = False
-    self.segmentFiducialsSelector.setMRMLScene(slicer.mrmlScene)
-    self.segmentFiducialsSelector.setToolTip("Select Markups for segments creation")
-    segmentFormLayout.addRow("Segment points", self.segmentFiducialsSelector)
-
-    self.segDestinationSelector = slicer.qMRMLNodeComboBox()
-    self.segDestinationSelector.nodeTypes = (("vtkMRMLModelNode"), "")
-    self.segDestinationSelector.addEnabled = True
-    self.segDestinationSelector.removeEnabled = False
-    self.segDestinationSelector.noneEnabled = True
-    self.segDestinationSelector.showHidden = False
-    self.segDestinationSelector.renameEnabled = True
-    self.segDestinationSelector.selectNodeUponCreation = True
-    self.segDestinationSelector.showChildNodeTypes = False
-    self.segDestinationSelector.setMRMLScene(slicer.mrmlScene)
-    self.segDestinationSelector.setToolTip("Pick up or create a Model node.")
-    segmentFormLayout.addRow("Segment model: ", self.segDestinationSelector)
-
-
-    #
-    # Segment step size
-    #
-    #self.segmentSliderWidget = ctk.ctkSliderWidget()
-    #self.segmentSgliderWidget.singleStep = 1.0
-    #self.segmentSliderWidget.minimum = 0.01
-    #self.segmentSliderWidget.maximum = 20.0
-    #self.segmentSliderWidget.value = 1.0
-    #self.segmentSliderWidget.setToolTip("Set the segment step size.")
-    #segmentFormLayout.addRow("Step Size (mm): ", self.segmentSliderWidget)
+    exportCollapsibleButton = ctk.ctkCollapsibleButton()
+    exportCollapsibleButton.text = "Export"
+    exportCollapsibleButton.collapsed = True
+    self.layout.addWidget(exportCollapsibleButton)
+    exportFormLayout = qt.QFormLayout(exportCollapsibleButton)
 
     #
     # Button to generate a segment points
     #
-    self.generateSegButton = qt.QPushButton("Generate segment points")
-    self.generateSegButton.toolTip = "Generate Segment Points"
-    self.generateSegButton.enabled = True
-    segmentFormLayout.addRow("", self.generateSegButton)
+    self.exportIntoSegFiducialsButton = qt.QPushButton("Generate segmented fiducials")
+    self.exportIntoSegFiducialsButton.toolTip = "Generate segment x number of fiducials nodes, x is defined by the text field."
+    self.exportIntoSegFiducialsButton.enabled = True
+    self.exportIntoSegFiducialsButton.connect('clicked(bool)', self.onGenerateSegCurve)
 
-    self.segDestinationDispNode = None
+    self.segmentNumEdit = qt.QSpinBox()
+    self.segmentNumEdit.setMinimum(1)
+    self.segmentNumEdit.setMaximum(1000)
+    exportLayout = qt.QHBoxLayout()
+    exportLayout.addWidget(self.segmentNumEdit, 0, 1)
+    exportLayout.addWidget(self.exportIntoSegFiducialsButton, 1)
+    exportFormLayout.addRow("", exportLayout)
 
-    self.segmentFiducialsSelector.connect("currentNodeChanged(vtkMRMLNode*)",
-                                         self.onSegmentSelectorUpdate)
-    self.generateSegButton.connect('clicked(bool)', self.onGenerateSegCurve)
-    #self.SegmentSliderWidget.connect("valueChanged(double)", self.onStepSizeUpdated)
-
-    self.segmentDistanceTable = qt.QTableWidget(1, 3)
-    self.segmentDistanceTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
-    self.segmentDistanceTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
-    self.segmentDistanceTableHeaders = ["Index", "Position (mm)", "Distance (mm)"]
-    self.segmentDistanceTable.setHorizontalHeaderLabels(self.segmentDistanceTableHeaders)
-    self.segmentDistanceTable.horizontalHeader().setStretchLastSection(True)
-    segmentFormLayout.addWidget(self.segmentDistanceTable)
-    
     layout = slicer.app.layoutManager()
     view = layout.threeDWidget(0).threeDView()
     renderer = layout.activeThreeDRenderer()
@@ -722,70 +676,13 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
         
     self.fiducialsTable.show()
 
-  def onSegmentSelectorUpdate(self):
-    #if self.segmentFiducialsSelector.currentNode() and self.segDestinationSelector.currentNode():
-    pass
 
   def onGenerateSegCurve(self):
-    segDestionationNode = self.segDestinationSelector.currentNode()
-    segFiducialNode = self.segmentFiducialsSelector.currentNode()
-    if self.logic.CurvePoly and segDestionationNode and segFiducialNode:
-      if segDestionationNode.GetDisplayNodeID() == None:
-        modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-        modelDisplayNode.SetColor(self.logic.ModelColor)
-        slicer.mrmlScene.AddNode(modelDisplayNode)
-        segDestionationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-      segCurvePoly = segDestionationNode.GetPolyData()
-      if segCurvePoly!= None:
-        segCurvePoly.Initialize()
-      else:
-        segCurvePoly = vtk.vtkPolyData()
-        segDestionationNode.SetAndObservePolyData(segCurvePoly)
-      self.logic.generateSegCurve(segFiducialNode, segDestionationNode, self.logic.CurvePoly)
-      self.updateSegFiducialTable(segFiducialNode)
+    numberOfSeg = self.segmentNumEdit.value
+    if self.logic.CurvePoly:
+      self.logic.generateSegCurve(numberOfSeg, self.logic.CurvePoly)
     pass
 
-  def updateSegFiducialTable(self, fiducialNode):
-    segFiducialNode = self.segmentFiducialsSelector.currentNode()
-    if not segFiducialNode:
-      self.segmentDistanceTable.clear()
-      self.segmentDistanceTable.setHorizontalHeaderLabels(self.segmentDistanceTableHeaders)
-    else:
-      self.segmentDistanceTableData = []
-      nOfControlPoints = segFiducialNode.GetNumberOfFiducials()
-      if self.segmentDistanceTable.rowCount != nOfControlPoints:
-        self.segmentDistanceTable.setRowCount(nOfControlPoints)
-
-      pos_pre = [0.0, 0.0, 0.0]
-      segFiducialNode.GetNthFiducialPosition(0, pos_pre)
-      posstr = '(%.3f, %.3f, %.3f)' % (pos_pre[0], pos_pre[1], pos_pre[2])
-      cellIndex = qt.QTableWidgetItem(str(0))
-      cellPosition = qt.QTableWidgetItem(posstr)
-      cellDistance = qt.QTableWidgetItem('0.000')
-      row = [cellIndex, cellPosition, cellDistance]
-      self.segmentDistanceTable.setItem(0, 0, row[0])
-      self.segmentDistanceTable.setItem(0, 1, row[1])
-      self.segmentDistanceTable.setItem(0, 2, row[2])
-      self.segmentDistanceTableData.append(row)
-      dist = 0.0
-      for i in range(1, nOfControlPoints):
-        pos_post = [0.0, 0.0, 0.0]
-        segFiducialNode.GetNthFiducialPosition(i, pos_post)
-        posstr = '(%.3f, %.3f, %.3f)' % (pos_post[0], pos_post[1], pos_post[2])
-        delta_dist = numpy.linalg.norm(numpy.array(pos_post) - numpy.array(pos_pre))
-        dist = dist + delta_dist
-        cellIndex = qt.QTableWidgetItem(str(i))
-        cellPosition = qt.QTableWidgetItem(posstr)
-        cellDistance = qt.QTableWidgetItem('%.3f' % dist)
-        row = [cellIndex, cellPosition, cellDistance]
-
-        self.segmentDistanceTable.setItem(i, 0, row[0])
-        self.segmentDistanceTable.setItem(i, 1, row[1])
-        self.segmentDistanceTable.setItem(i, 2, row[2])
-        self.segmentDistanceTableData.append(row)
-        pos_pre = pos_post
-    self.segmentDistanceTable.show()
-    pass
 
 #
 # CurveMakerLogic
@@ -1264,26 +1161,49 @@ class CurveMakerLogic:
     return (distance, minErrVec)
 
 
-  def generateSegCurve(self, fiducialNode, curveModeNode, curvePoly):
-    fiducialNode.RemoveAllMarkups()
+  def generateSegCurve(self, numberOfSegs, curvePoly):
     points = curvePoly.GetPoints()
     numPoints = points.GetNumberOfPoints()
-    for i in range(numPoints):
-      fiducialNode.AddFiducialFromArray(points.GetPoint(i))
-      fiducialNode.SetNthFiducialLabel(i, "")
-    polydata = curveModeNode.GetPolyData()
-    if self.InterpolationMethod == 0:
-      if self.RingMode > 0:
-        self.nodeToPoly(fiducialNode, polydata, True)
+    segLen = self.CurveLength/numberOfSegs
+    fiducialNodeIndex = 0
+    fiducialNodeList = []
+    # Adding the segment fiducial nodes. if the fiducial node exists, then delete the old nodes
+    for index in range(numberOfSegs):
+      collection = slicer.mrmlScene.GetNodesByClassByName("vtkMRMLMarkupsFiducialNode", self.SourceNode.GetName() + "_" + str(index))
+      if collection.GetNumberOfItems() > 0 :
+        for i in range(collection.GetNumberOfItems()-1, -1, -1):
+          slicer.mrmlScene.RemoveNode(collection.GetItemAsObject(i))
+      markupNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsFiducialNode")
+      slicer.mrmlScene.AddNode(markupNode)
+      markupNode.SetName(self.SourceNode.GetName() + "_" + str(index))
+      fiducialNodeList.append(markupNode)
+    pos_pre = points.GetPoint(0)
+    dist = 0.0
+    i = 0
+    while i < numPoints:
+      pos_post =  points.GetPoint(i)
+      delta_dist = numpy.linalg.norm(numpy.array(pos_post) - numpy.array(pos_pre))
+      distSum = dist + delta_dist
+      if distSum > segLen:
+        lenToAdd = segLen - dist
+        normDirection = (numpy.array(pos_post) - numpy.array(pos_pre)) / delta_dist
+        pos_Interpolated = pos_pre + lenToAdd*normDirection
+        fiducialNodeList[fiducialNodeIndex].AddFiducialFromArray(pos_Interpolated)
+        markupNum = fiducialNodeList[fiducialNodeIndex].GetNumberOfFiducials()
+        fiducialNodeList[fiducialNodeIndex].SetNthFiducialLabel(markupNum - 1, "")
+        distSum = 0
+        fiducialNodeIndex = fiducialNodeIndex + 1
+        fiducialNodeList[fiducialNodeIndex].AddFiducialFromArray(pos_Interpolated)
+        markupNum = fiducialNodeList[fiducialNodeIndex].GetNumberOfFiducials()
+        fiducialNodeList[fiducialNodeIndex].SetNthFiducialLabel(markupNum - 1, "")
+        pos_pre = pos_Interpolated
+        if i > 0: # we need to re-evaluate the point at this index for the next segment
+          i = i - 1
       else:
-        self.nodeToPoly(fiducialNode, polydata, False)
-    elif self.InterpolationMethod == 1:  # Cardinal Spline
-      if self.RingMode > 0:
-        self.nodeToPolyCardinalSpline(fiducialNode, polydata, True)
-      else:
-        self.nodeToPolyCardinalSpline(fiducialNode, polydata, False)
-    elif self.InterpolationMethod == 2:  # Hermite Spline
-      if self.RingMode > 0:
-        self.nodeToPolyHermiteSpline(fiducialNode, polydata, True)
-      else:
-        self.nodeToPolyHermiteSpline(fiducialNode, polydata, False)
+        fiducialNodeList[fiducialNodeIndex].AddFiducialFromArray(pos_post)
+        markupNum = fiducialNodeList[fiducialNodeIndex].GetNumberOfFiducials()
+        fiducialNodeList[fiducialNodeIndex].SetNthFiducialLabel(markupNum - 1, "")
+        pos_pre = pos_post
+      dist = distSum  
+      i = i + 1
+
