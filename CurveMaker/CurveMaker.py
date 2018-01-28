@@ -170,7 +170,16 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     self.RingGroup.addButton(self.RingOn)
 
     parametersFormLayout.addRow("Ring mode: ", self.RingLayout)
-
+    
+    
+    #
+    # Check box to make current model more prominent
+    #
+    self.EnableModelEnhnanceCheckBox = qt.QCheckBox()
+    self.EnableModelEnhnanceCheckBox.checked = 0
+    self.EnableModelEnhnanceCheckBox.setToolTip("If checked, the current model will be showed in red while other will be blue. Alpha value will also be changed.")
+    parametersFormLayout.addRow("Highlight current curve:", self.EnableModelEnhnanceCheckBox)
+    
     #
     # Check box to start curve visualization
     #
@@ -178,6 +187,7 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     self.EnableAutoUpdateCheckBox.checked = 0
     self.EnableAutoUpdateCheckBox.setToolTip("If checked, the CurveMaker module keeps updating the model as the points are updated.")
     parametersFormLayout.addRow("Auto update:", self.EnableAutoUpdateCheckBox)
+
 
     #
     # Button to generate a curve
@@ -194,6 +204,7 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     self.RingOff.connect('clicked(bool)', self.onRingOff)
     self.RingOn.connect('clicked(bool)', self.onRingOn)
     self.EnableAutoUpdateCheckBox.connect('toggled(bool)', self.onEnableAutoUpdate)
+    self.EnableModelEnhnanceCheckBox.connect('toggled(bool)', self.onEnableAutoEhnanceDisplay)
     self.SourceSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSourceSelected)
     self.DestinationSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onDestinationSelected)
     self.RadiusSliderWidget.connect("valueChanged(double)", self.onTubeUpdated)
@@ -400,12 +411,13 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     exportFormLayout.addRow("", exportLayout)
 
     layout = slicer.app.layoutManager()
-    view = layout.threeDWidget(0).threeDView()
-    renderer = layout.activeThreeDRenderer()
-    self.scalarBarWidget.SetInteractor(renderer.GetRenderWindow().GetInteractor())
-    self.lookupTable = vtk.vtkLookupTable()
-    self.lookupTable.SetRange(0.0, 100.0)
-    self.scalarBarWidget.GetScalarBarActor().SetLookupTable(self.lookupTable)
+    if layout:
+      view = layout.threeDWidget(0).threeDView()
+      renderer = layout.activeThreeDRenderer()
+      self.scalarBarWidget.SetInteractor(renderer.GetRenderWindow().GetInteractor())
+      self.lookupTable = vtk.vtkLookupTable()
+      self.lookupTable.SetRange(0.0, 100.0)
+      self.scalarBarWidget.GetScalarBarActor().SetLookupTable(self.lookupTable)
 
     ## default curvature mode: off
     self.curvatureOff.setChecked(True)
@@ -417,24 +429,39 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     self.layout.addStretch(1)
 
 
-  def cleanup(self):
-    pass
+  def onReload(self,moduleName="CurveMaker"):
+    """Generic reload method for any scripted module.
+    ModuleWizard will subsitute correct default moduleName.
+    """
+    ScriptedLoadableModuleWidget.onReload(self)
+    slicer.mrmlScene.Clear(0)
+    globals()[moduleName] = slicer.util.reloadScriptedModule(moduleName)
+    self.logic = CurveMakerLogic()
 
   def onEnableAutoUpdate(self, state):
     self.logic.enableAutomaticUpdate(state)
+    self.logic.updateDisplay(self.EnableModelEnhnanceCheckBox.isChecked())
+    
+  def onEnableAutoEhnanceDisplay(self, state):
+    self.logic.DestinationNode.GetDisplayNode().RemoveObserver(self.tagDestinationDispNode)
+    self.logic.updateDisplay(state) 
+    self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
+     
 
   def onGenerateCurve(self):
     self.logic.generateCurveOnce()
+    self.onEnableAutoEhnanceDisplay(self.EnableModelEnhnanceCheckBox.isChecked())
     
   def onSourceSelected(self):
     # Remove observer if previous node exists
     if self.logic.SourceNode and self.tagSourceNode:
       self.logic.SourceNode.RemoveObserver(self.tagSourceNode)
+      self.logic.SourceNode.SetLocked(True) # lock the previous markups node
 
     # Update selected node, add observer, and update control points
     if self.SourceSelector.currentNode():
       self.logic.SourceNode = self.SourceSelector.currentNode()
-
+      self.logic.SourceNode.SetLocked(False)
       # Check if model has already been generated with for this fiducial list
       tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
       self.DestinationSelector.setCurrentNodeID(tubeModelID)
@@ -446,7 +473,11 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     else:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
       self.logic.updateCurve()
-
+    
+    #Change the color and alpha value of the other models to make the current node prominent
+    if (self.SourceSelector.currentNode() is not None) and \
+       (self.DestinationSelector.currentNode() is not None):
+      self.onEnableAutoEhnanceDisplay(self.EnableModelEnhnanceCheckBox.isChecked())
       
   def onDestinationSelected(self):
     if self.logic.DestinationNode and self.tagDestinationNode:
@@ -458,10 +489,20 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     if self.DestinationSelector.currentNode():
       self.logic.DestinationNode = self.DestinationSelector.currentNode()
       self.tagDestinationNode = self.logic.DestinationNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelModifiedEvent)
-
-      if self.logic.DestinationNode.GetDisplayNode():
-        self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
-
+      if self.logic.DestinationNode.GetDisplayNodeID() == None:
+        modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+        modelDisplayNode.SetColor(self.logic.ModelColorBlue)
+        slicer.mrmlScene.AddNode(modelDisplayNode)
+        self.logic.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+      self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
+     
+    #Initialize the color attribute of display node
+    if self.SourceSelector.currentNode() and self.DestinationSelector.currentNode():
+      rgb = self.logic.curveModelNodesColor.get(self.logic.DestinationNode.GetDisplayNode().GetID())
+      if not rgb:
+        rgb = self.logic.ModelColorBlue
+      self.logic.curveModelNodesColor[self.logic.DestinationNode.GetDisplayNode().GetID()] = rgb
+       
     # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
       self.EnableAutoUpdateCheckBox.setCheckState(False)
@@ -476,13 +517,6 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     
   def onInterpResolutionUpdated(self):
     self.logic.setInterpResolution(self.InterpResolutionSliderWidget.value)
-
-    
-  def onReload(self,moduleName="CurveMaker"):
-    """Generic reload method for any scripted module.
-    ModuleWizard will subsitute correct default moduleName.
-    """
-    globals()[moduleName] = slicer.util.reloadScriptedModule(moduleName)
 
     
   def onSelectInterpolationNone(self, s):
@@ -538,11 +572,13 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     self.scalarBarWidget.Modified()
     self.scalarBarWidget.SetEnabled(1)
     if self.logic.DestinationNode:
+      self.logic.DestinationNode.GetDisplayNode().RemoveObserver(self.tagDestinationDispNode)
       dispNode = self.logic.DestinationNode.GetDisplayNode()
       colorTable = slicer.util.getNode('ColdToHotRainbow')
       dispNode.SetAndObserveColorNodeID(colorTable.GetID())
       dispNode.ScalarVisibilityOn()
-      dispNode.SetScalarRangeFlag(slicer.vtkMRMLModelDisplayNode.UseDisplayNodeScalarRange)
+      dispNode.SetScalarRangeFlag(slicer.vtkMRMLModelDisplayNode.UseColorNodeScalarRange)
+      self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
       self.scalarBarWidget.GetScalarBarActor().SetLookupTable(colorTable.GetLookupTable())
     self.meanCurvatureLineEdit.enabled = True
     self.minCurvatureLineEdit.enabled = True
@@ -581,12 +617,14 @@ class CurveMakerWidget(ScriptedLoadableModuleWidget):
     self.lengthLineEdit.text = '%.2f' % self.logic.CurveLength
     self.updateTargetFiducialsTable()
     self.updateCurvatureInterface()
-
         
   def onModelDisplayModifiedEvent(self, caller, event):
-    self.updateCurvatureInterface()
-
-
+    self.logic.DestinationNode.GetDisplayNode().RemoveObserver(self.tagDestinationDispNode)
+    self.updateCurvatureInterface() # updateCurvatureInterface modifies display node, will recall this function.
+    if self.logic.DestinationNode.GetDisplayNode():
+      self.logic.curveModelNodesColor[self.logic.DestinationNode.GetDisplayNode().GetID()] = self.logic.DestinationNode.GetDisplayNode().GetColor()
+    self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
+    
   def updateCurvatureInterface(self):
     if self.logic.DestinationNode and self.logic.Curvature:
       dispNode = self.logic.DestinationNode.GetDisplayNode()
@@ -693,11 +731,13 @@ class CurveMakerLogic:
   def __init__(self):
     self.SourceNode = None
     self.DestinationNode = None
+    self.curveModelNodesColor = dict() 
     self.TubeRadius = 5.0
 
     self.AutomaticUpdate = False
     self.NumberOfIntermediatePoints = 20
-    self.ModelColor = [0.0, 0.0, 1.0]
+    self.ModelColorBlue = [0.0, 0.0, 1.0]
+    self.ModelColorRed = [1.0, 0.0, 0.0]
 
     self.CurvePoly = None
     self.interpResolution = 25
@@ -747,6 +787,25 @@ class CurveMakerLogic:
   def enableAutomaticUpdate(self, auto):
     self.AutomaticUpdate = auto
     self.updateCurve()
+  
+  def updateDisplay(self, auto):
+    if auto == True:
+      for displayID in self.curveModelNodesColor.keys():
+        if self.DestinationNode and self.DestinationNode.GetDisplayNode():
+          if not displayID == self.DestinationNode.GetDisplayNode().GetID():
+            slicer.mrmlScene.GetNodeByID(displayID).SetColor(self.ModelColorBlue)
+            slicer.mrmlScene.GetNodeByID(displayID).SetOpacity(0.2)
+      if len(self.curveModelNodesColor)>1: 
+        # we only change the color of the current selected model when more than one curve model are available.
+        self.DestinationNode.GetDisplayNode().SetColor(self.ModelColorRed)
+        self.DestinationNode.GetDisplayNode().SetOpacity(1.0)
+    else:
+      for displayID in self.curveModelNodesColor.keys():
+        displayNode = slicer.mrmlScene.GetNodeByID(displayID)
+        if displayNode:
+          color = self.curveModelNodesColor[displayID]
+          displayNode.SetColor(color)
+          displayNode.SetOpacity(1.0)
 
   def generateCurveOnce(self):
     prevAutomaticUpdate = self.AutomaticUpdate
@@ -1013,12 +1072,6 @@ class CurveMakerLogic:
         if self.CurvePoly == None:
           self.CurvePoly = vtk.vtkPolyData()
         
-        if self.DestinationNode.GetDisplayNodeID() == None:
-          modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-          modelDisplayNode.SetColor(self.ModelColor)
-          slicer.mrmlScene.AddNode(modelDisplayNode)
-          self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-        
         if self.InterpolationMethod == 0:
         
           if self.RingMode > 0:
@@ -1176,6 +1229,7 @@ class CurveMakerLogic:
       markupNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLMarkupsFiducialNode")
       slicer.mrmlScene.AddNode(markupNode)
       markupNode.SetName(self.SourceNode.GetName() + "_" + str(index))
+      markupNode.SetLocked(True)
       fiducialNodeList.append(markupNode)
     pos_pre = points.GetPoint(0)
     dist = 0.0
@@ -1193,12 +1247,13 @@ class CurveMakerLogic:
         fiducialNodeList[fiducialNodeIndex].SetNthFiducialLabel(markupNum - 1, "")
         distSum = 0
         fiducialNodeIndex = fiducialNodeIndex + 1
+        if fiducialNodeIndex >= numberOfSegs:
+          break
         fiducialNodeList[fiducialNodeIndex].AddFiducialFromArray(pos_Interpolated)
         markupNum = fiducialNodeList[fiducialNodeIndex].GetNumberOfFiducials()
         fiducialNodeList[fiducialNodeIndex].SetNthFiducialLabel(markupNum - 1, "")
         pos_pre = pos_Interpolated
-        if i > 0: # we need to re-evaluate the point at this index for the next segment
-          i = i - 1
+        i = (i-1) if i>0 else 0 # we need to re-evaluate the point at this index for the next segment
       else:
         fiducialNodeList[fiducialNodeIndex].AddFiducialFromArray(pos_post)
         markupNum = fiducialNodeList[fiducialNodeIndex].GetNumberOfFiducials()
