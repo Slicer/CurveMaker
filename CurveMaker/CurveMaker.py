@@ -409,7 +409,7 @@ class CurveMakerWidget:
       # Check if model has already been generated with for this fiducial list
       tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
       self.DestinationSelector.setCurrentNodeID(tubeModelID)
-      self.tagSourceNode = self.logic.SourceNode.AddObserver('ModifiedEvent', self.logic.controlPointsUpdated)
+      self.tagSourceNode = self.logic.SourceNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.logic.controlPointsUpdated, 2)
 
     # Update checkbox
     if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
@@ -591,7 +591,7 @@ class CurveMakerWidget:
     # Update selected node, add observer, and update control points
     if self.targetFiducialsSelector.currentNode():
       self.targetFiducialsNode = self.targetFiducialsSelector.currentNode()
-      self.tag = self.targetFiducialsNode.AddObserver('ModifiedEvent', self.onTargetFiducialsUpdated)
+      self.tag = self.targetFiducialsNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.onTargetFiducialsUpdated, 2)
     else:
       self.targetFiducialsNode = None
       self.tag = None
@@ -599,8 +599,7 @@ class CurveMakerWidget:
 
     
   def onTargetFiducialsUpdated(self,caller,event):
-    if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
-      self.updateTargetFiducialsTable()
+    self.updateTargetFiducialsTable()
 
       
   def updateTargetFiducialsTable(self):
@@ -719,8 +718,7 @@ class CurveMakerLogic:
     self.AutomaticUpdate = prevAutomaticUpdate
 
   def controlPointsUpdated(self,caller,event):
-    if caller.IsA('vtkMRMLMarkupsFiducialNode') and event == 'ModifiedEvent':
-      self.updateCurve()
+    self.updateCurve()
 
   def nodeToPoly(self, sourceNode, outputPoly, closed=False):
     points = vtk.vtkPoints()
