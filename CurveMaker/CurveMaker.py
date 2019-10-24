@@ -12,7 +12,7 @@ from Endoscopy import EndoscopyComputePath
 class CurveMaker:
   def __init__(self, parent):
     parent.title = "Curve Maker"
-    parent.categories = ["Informatics"]
+    parent.categories = ["Utilities"]
     parent.dependencies = []
     parent.contributors = ["Junichi Tokuda (BWH), Laurent Chauvin (BWH)"]
     parent.helpText = """
@@ -49,7 +49,7 @@ class CurveMakerWidget:
     self.RingOn = None
 
     # Tags to manage event observers
-    self.tagSourceNode = None
+    # self.tagSourceNode = None
     self.tagDestinationNode = None
     
     ####################
@@ -398,25 +398,36 @@ class CurveMakerWidget:
     self.logic.generateCurveOnce()
     
   def onSourceSelected(self):
-    # Remove observer if previous node exists
-    if self.logic.SourceNode and self.tagSourceNode:
-      self.logic.SourceNode.RemoveObserver(self.tagSourceNode)
+    ## Remove observer if previous node exists
+    #if self.logic.SourceNode and self.tagSourceNode:
+    #  self.logic.SourceNode.RemoveObserver(self.tagSourceNode)
 
     # Update selected node, add observer, and update control points
-    if self.SourceSelector.currentNode():
-      self.logic.SourceNode = self.SourceSelector.currentNode()
+    sourceNode = self.SourceSelector.currentNode()
+    destinationNode = self.DestinationSelector.currentNode()
+    if sourceNode:
+      self.logic.SourceNode = sourceNode
 
-      # Check if model has already been generated with for this fiducial list
+      # Check if model has already been generated for this fiducial list
       tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
       self.DestinationSelector.setCurrentNodeID(tubeModelID)
-      self.tagSourceNode = self.logic.SourceNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.logic.controlPointsUpdated, 2)
 
-    # Update checkbox
-    if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
+    # Update AutoUpdate checkbox
+    if sourceNode == None:
       self.EnableAutoUpdateCheckBox.setCheckState(False)
     else:
-      self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
-      self.logic.updateCurve()
+      if destinationNode == None:
+        #self.logic.setSourceNodeObserver(sourceNode, 0)
+        self.EnableAutoUpdateCheckBox.setCheckState(False)
+      else:
+        # Both source and destination are specified
+        if sourceNode.GetAttribute('CurveMaker.AutoUpdate') == '1':
+          self.EnableAutoUpdateCheckBox.setCheckState(True)
+        else:
+          self.EnableAutoUpdateCheckBox.setCheckState(False)
+
+    self.logic.updateObservers()
+    self.logic.updateCurve()
 
       
   def onDestinationSelected(self):
@@ -434,9 +445,18 @@ class CurveMakerWidget:
         self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
 
     # Update checkbox
-    if (self.SourceSelector.currentNode() == None or self.DestinationSelector.currentNode() == None):
+    sourceNode = self.SourceSelector.currentNode()
+    destinationNode = self.DestinationSelector.currentNode()
+    if sourceNode == None:
       self.EnableAutoUpdateCheckBox.setCheckState(False)
-    else:
+      
+    if destinationNode == None:
+      self.EnableAutoUpdateCheckBox.setCheckState(False)
+      if sourceNode != None:
+        self.logic.setSourceNodeObserver(sourceNode, False)
+
+    # Set CurveMake.CurveModel attribute
+    if destinationNode and destinationNode:
       self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
       self.logic.updateCurve()
 
@@ -708,16 +728,53 @@ class CurveMakerLogic:
     self.updateCurve()
     
   def enableAutomaticUpdate(self, auto):
-    self.AutomaticUpdate = auto
+    self.setSourceNodeObserver(self.SourceNode, auto)
     self.updateCurve()
 
   def generateCurveOnce(self):
-    prevAutomaticUpdate = self.AutomaticUpdate
-    self.AutomaticUpdate = True
-    self.updateCurve()
-    self.AutomaticUpdate = prevAutomaticUpdate
+    #prevAutomaticUpdate = self.AutomaticUpdate
+    #self.AutomaticUpdate = True
+    self.updateCurve(currentOnly=True)
+    #self.AutomaticUpdate = prevAutomaticUpdate
 
+  def setSourceNodeObserver(self, fnode, switch):
+    if fnode == None:
+      return
+
+    print('CurveMaker.AutoUpdate = % s' % fnode.GetAttribute('CurveMaker.AutoUpdate'))
+    print('CurveMaker.ObserverTag = % s' % fnode.GetAttribute('CurveMaker.ObserverTag'))
+    print('switch = % s' % switch)
+    
+    if switch == True:
+      fnode.SetAttribute('CurveMaker.AutoUpdate', '1')
+      if fnode.GetAttribute('CurveMaker.ObserverTag') == None:
+        print('Adding observer')
+        # If there is no observer added despite the active AutoUpdate status
+        tag = fnode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.controlPointsUpdated, 2)
+        print(tag)
+        fnode.SetAttribute('CurveMaker.ObserverTag', str(tag))
+      fnode.SetAttribute('CurveMaker.AutoUpdate', '1')
+    else:
+      tag = fnode.GetAttribute('CurveMaker.ObserverTag')
+      if tag != None:
+        # if there is an observer
+        fnode.RemoveObserver(int(tag))
+        fnode.SetAttribute('CurveMaker.ObserverTag', None)
+      fnode.SetAttribute('CurveMaker.AutoUpdate', '0')
+    
+  def updateObservers(self):
+    ## Scan the scene and add/remove observers based on the flag attribute
+    fnodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLMarkupsFiducialNode')
+    
+    for i in range(fnodes.GetNumberOfItems()):
+      fnode = fnodes.GetItemAsObject(i)
+      if fnode.GetAttribute('CurveMaker.AutoUpdate') == '1':
+        self.setSourceNodeObserver(fnode, True)
+      else:
+        self.setSourceNodeObserver(fnode, False)
+        
   def controlPointsUpdated(self,caller,event):
+    print('controlPointsUpdated(self,caller,event)')
     self.updateCurve()
 
   def nodeToPoly(self, sourceNode, outputPoly, closed=False):
@@ -957,14 +1014,33 @@ class CurveMakerLogic:
     return (meanKappa, minKappa, maxKappa)
 
   
-  def updateCurve(self):
+  def updateCurve(self, currentOnly=False):
 
-    if self.AutomaticUpdate == False:
-      return
+    #if self.AutomaticUpdate == False:
+    #  return
+    if currentOnly:
+      self.updateSingleCurve(self.SourceNode, False)
+    else:
+      fnodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLMarkupsFiducialNode')
+      for i in range(fnodes.GetNumberOfItems()):
+        fnode = fnodes.GetItemAsObject(i)
+        self.updateSingleCurve(fnode, True)
+      
 
-    if self.SourceNode and self.DestinationNode:
+  def updateSingleCurve(self, sourceNode, autoUpdate):
 
-      if self.SourceNode.GetNumberOfFiducials() < 2:
+    destinationNode = None
+    fUpdate = True
+    
+    if sourceNode:
+      nodeID = sourceNode.GetAttribute('CurveMaker.CurveModel')
+      destinationNode = slicer.mrmlScene.GetNodeByID(nodeID)
+      if autoUpdate:
+        fUpdate = (sourceNode.GetAttribute('CurveMaker.AutoUpdate') == '1')
+      
+    if sourceNode and destinationNode and fUpdate:
+
+      if sourceNode.GetNumberOfFiducials() < 2:
         if self.CurvePoly != None:
           self.CurvePoly.Initialize()
 
@@ -975,39 +1051,43 @@ class CurveMakerLogic:
         if self.CurvePoly == None:
           self.CurvePoly = vtk.vtkPolyData()
         
-        if self.DestinationNode.GetDisplayNodeID() == None:
+        if destinationNode.GetDisplayNodeID() == None:
           modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
           modelDisplayNode.SetColor(self.ModelColor)
           slicer.mrmlScene.AddNode(modelDisplayNode)
-          self.DestinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+          destinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
         
         if self.InterpolationMethod == 0:
         
           if self.RingMode > 0:
-            self.nodeToPoly(self.SourceNode, self.CurvePoly, True)
+            self.nodeToPoly(sourceNode, self.CurvePoly, True)
           else:
-            self.nodeToPoly(self.SourceNode, self.CurvePoly, False)
+            self.nodeToPoly(sourceNode, self.CurvePoly, False)
         
         elif self.InterpolationMethod == 1: # Cardinal Spline
         
           if self.RingMode > 0:
-            self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, True)
+            self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly, True)
           else:
-            self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, False)
+            self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly, False)
         
         elif self.InterpolationMethod == 2: # Hermite Spline
         
           if self.RingMode > 0:        
-            self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, True)
+            self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly, True)
           else:
-            self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, False)
+            self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly, False)
           
         self.CurveLength = self.calculateLineLength(self.CurvePoly)
 
       tubeFilter = vtk.vtkTubeFilter()
       curvatureValues = vtk.vtkDoubleArray()
 
-      if self.Curvature:
+      fCurvature = False
+      if self.SourceNode:
+        fCurvature = (sourceNode.GetID() == self.SourceNode.GetID() and self.Curvature)
+
+      if fCurvature:
         ## If the curvature option is ON, calculate the curvature along the curve.
         (meanKappa, minKappa, maxKappa) = self.computeCurvatures(self.CurvePoly, curvatureValues)
         self.CurvePoly.GetPointData().AddArray(curvatureValues)
@@ -1025,15 +1105,15 @@ class CurveMakerLogic:
       tubeFilter.CappingOn()
       tubeFilter.Update()
 
-      self.DestinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
-      self.DestinationNode.Modified()
+      destinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
+      destinationNode.Modified()
       
-      if self.DestinationNode.GetScene() == None:
-        slicer.mrmlScene.AddNode(self.DestinationNode)
+      if destinationNode.GetScene() == None:
+        slicer.mrmlScene.AddNode(destinationNode)
 
-      displayNode = self.DestinationNode.GetDisplayNode()
+      displayNode = destinationNode.GetDisplayNode()
       if displayNode:
-        if self.Curvature:
+        if fCurvature:
           displayNode.SetActiveScalarName('Curvature')
         else:
           displayNode.SetActiveScalarName('')
