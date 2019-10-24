@@ -19,7 +19,7 @@ class CurveMaker:
     This module generates a 3D curve model that connects fiducials listed in a given markup node. 
     """
     parent.acknowledgementText = """
-    This work was supported by National Center for Image Guided Therapy (P41EB015898). The module is based on a template developed by Jean-Christophe Fillion-Robin, Kitware Inc. and Steve Pieper, Isomics, Inc. partially funded by NIH grant 3P41RR013218-12S1.
+    This work was supported by National Institutes of Health (P41EB015898, R01EB020667, R01CA235134). The module is based on a template developed by Jean-Christophe Fillion-Robin, Kitware Inc. and Steve Pieper, Isomics, Inc. partially funded by NIH grant 3P41RR013218-12S1.
 """ # replace with organization, grant and thanks.
     self.parent = parent
 
@@ -52,25 +52,25 @@ class CurveMakerWidget:
     self.tagSourceNode = None
     self.tagDestinationNode = None
     
-    #####################
-    ## For debugging
-    ##
-    ## Reload and Test area
-    #reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    #reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
-    #reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    ####################
+    # For debugging
     #
-    ## reload button
-    ## (use this during development, but remove it when delivering
-    ##  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "CurveMaker Reload"
-    #reloadFormLayout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
-    ##
-    #####################
+    # Reload and Test area
+    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+    reloadCollapsibleButton.text = "Reload && Test"
+    self.layout.addWidget(reloadCollapsibleButton)
+    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    
+    # reload button
+    # (use this during development, but remove it when delivering
+    #  your module to users)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "CurveMaker Reload"
+    reloadFormLayout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
+    #
+    ####################
 
     #
     # Parameters Area
