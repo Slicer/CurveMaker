@@ -683,7 +683,7 @@ class CurveMakerLogic:
     self.NumberOfIntermediatePoints = 20
     self.ModelColor = [0.0, 0.0, 1.0]
 
-    self.CurvePoly = None
+    self.CurvePoly = dict()
     
     # Interpolation method:
     #  'none': None
@@ -1050,15 +1050,14 @@ class CurveMakerLogic:
     if sourceNode and destinationNode and fUpdate:
 
       if sourceNode.GetNumberOfFiducials() < 2:
-        if self.CurvePoly != None:
-          self.CurvePoly.Initialize()
-
+        if sourceNode.GetID() in self.CurvePoly:
+          if self.CurvePoly[sourceNode.GetID()] != None:
+            self.CurvePoly[sourceNode.GetID()].Initialize()
         self.CurveLength = 0.0
 
       else:
-
-        if self.CurvePoly == None:
-          self.CurvePoly = vtk.vtkPolyData()
+        if not (sourceNode.GetID() in self.CurvePoly) or self.CurvePoly[sourceNode.GetID()] == None:
+          self.CurvePoly[sourceNode.GetID()] = vtk.vtkPolyData()
         
         if destinationNode.GetDisplayNodeID() == None:
           modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
@@ -1078,25 +1077,25 @@ class CurveMakerLogic:
 
         if method == 'none' or method == None:
           if ringMode > 0:
-            self.nodeToPoly(sourceNode, self.CurvePoly, True)
+            self.nodeToPoly(sourceNode, self.CurvePoly[sourceNode.GetID()], True)
           else:
-            self.nodeToPoly(sourceNode, self.CurvePoly, False)
+            self.nodeToPoly(sourceNode, self.CurvePoly[sourceNode.GetID()], False)
         
         elif method == 'cardinal': # Cardinal Spline
         
           if ringMode > 0:
-            self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly, True)
+            self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly[sourceNode.GetID()], True)
           else:
-            self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly, False)
+            self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly[sourceNode.GetID()], False)
         
         elif method == 'hermite': # Hermite Spline
         
           if ringMode > 0:        
-            self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly, True)
+            self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly[sourceNode.GetID()], True)
           else:
-            self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly, False)
+            self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly[sourceNode.GetID()], False)
           
-        self.CurveLength = self.calculateLineLength(self.CurvePoly)
+        self.CurveLength = self.calculateLineLength(self.CurvePoly[sourceNode.GetID()])
 
       tubeFilter = vtk.vtkTubeFilter()
       curvatureValues = vtk.vtkDoubleArray()
@@ -1107,8 +1106,8 @@ class CurveMakerLogic:
 
       if fCurvature:
         ## If the curvature option is ON, calculate the curvature along the curve.
-        (meanKappa, minKappa, maxKappa) = self.computeCurvatures(self.CurvePoly, curvatureValues)
-        self.CurvePoly.GetPointData().AddArray(curvatureValues)
+        (meanKappa, minKappa, maxKappa) = self.computeCurvatures(self.CurvePoly[sourceNode.GetID()], curvatureValues)
+        self.CurvePoly[sourceNode.GetID()].GetPointData().AddArray(curvatureValues)
         self.curvatureMeanKappa = meanKappa
         self.curvatureMinKappa = minKappa
         self.curvatureMaxKappa = maxKappa
@@ -1117,7 +1116,7 @@ class CurveMakerLogic:
         self.curvatureMinKappa = None
         self.curvatureMaxKappa = None
        
-      tubeFilter.SetInputData(self.CurvePoly)
+      tubeFilter.SetInputData(self.CurvePoly[sourceNode.GetID()])
       #tubeFilter.SetRadius(self.TubeRadius)
       radius = sourceNode.GetAttribute('CurveMaker.TubeRadius')
       if radius:
@@ -1164,11 +1163,11 @@ class CurveMakerLogic:
 
     npoint = numpy.array(point)
 
-    if self.CurvePoly == None:
+    if self.CurvePoly[self.CurrentSourceNode.GetID()] == None:
       return numpy.Inf
 
-    lines = self.CurvePoly.GetLines()
-    points = self.CurvePoly.GetPoints()
+    lines = self.CurvePoly[self.CurrentSourceNode.GetID()].GetLines()
+    points = self.CurvePoly[self.CurrentSourceNode.GetID()].GetPoints()
     pts = vtk.vtkIdList()
 
     lines.GetCell(0, pts)
