@@ -19,8 +19,10 @@ class CurveMaker:
     This module generates a 3D curve model that connects fiducials listed in a given markup node. 
     """
     parent.acknowledgementText = """
-    This work was supported by National Institutes of Health (P41EB015898, R01EB020667, R01CA235134). The module is based on a template developed by Jean-Christophe Fillion-Robin, Kitware Inc. and Steve Pieper, Isomics, Inc. partially funded by NIH grant 3P41RR013218-12S1.
-""" # replace with organization, grant and thanks.
+    This work was supported by National Institutes of Health (P41EB015898, R01EB020667, R01CA235134).
+    The module is based on a template developed by Jean-Christophe Fillion-Robin, Kitware Inc. and Steve Pieper, Isomics, Inc.
+    partially funded by NIH grant 3P41RR013218-12S1.
+    """
     self.parent = parent
 
 
@@ -406,10 +408,10 @@ class CurveMakerWidget:
     sourceNode = self.SourceSelector.currentNode()
     destinationNode = self.DestinationSelector.currentNode()
     if sourceNode:
-      self.logic.SourceNode = sourceNode
+      self.logic.CurrentSourceNode = sourceNode
 
       # Check if model has already been generated for this fiducial list
-      tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
+      tubeModelID = self.logic.CurrentSourceNode.GetAttribute('CurveMaker.CurveModel')
       self.DestinationSelector.setCurrentNodeID(tubeModelID)
 
     # Update AutoUpdate checkbox
@@ -431,18 +433,18 @@ class CurveMakerWidget:
 
       
   def onDestinationSelected(self):
-    if self.logic.DestinationNode and self.tagDestinationNode:
-      self.logic.DestinationNode.RemoveObserver(self.tagDestinationNode)
-      if self.logic.DestinationNode.GetDisplayNode() and self.tagDestinationDispNode:
-        self.logic.DestinationNode.GetDisplayNode().RemoveObserver(self.tagDestinationDispNode)
+    if self.logic.CurrentDestinationNode and self.tagDestinationNode:
+      self.logic.CurrentDestinationNode.RemoveObserver(self.tagDestinationNode)
+      if self.logic.CurrentDestinationNode.GetDisplayNode() and self.tagDestinationDispNode:
+        self.logic.CurrentDestinationNode.GetDisplayNode().RemoveObserver(self.tagDestinationDispNode)
     
     # Update destination node
     if self.DestinationSelector.currentNode():
-      self.logic.DestinationNode = self.DestinationSelector.currentNode()
-      self.tagDestinationNode = self.logic.DestinationNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelModifiedEvent)
+      self.logic.CurrentDestinationNode = self.DestinationSelector.currentNode()
+      self.tagDestinationNode = self.logic.CurrentDestinationNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelModifiedEvent)
 
-      if self.logic.DestinationNode.GetDisplayNode():
-        self.tagDestinationDispNode = self.logic.DestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
+      if self.logic.CurrentDestinationNode.GetDisplayNode():
+        self.tagDestinationDispNode = self.logic.CurrentDestinationNode.GetDisplayNode().AddObserver(vtk.vtkCommand.ModifiedEvent, self.onModelDisplayModifiedEvent)
 
     # Update checkbox
     sourceNode = self.SourceSelector.currentNode()
@@ -457,7 +459,7 @@ class CurveMakerWidget:
 
     # Set CurveMake.CurveModel attribute
     if destinationNode and destinationNode:
-      self.logic.SourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.DestinationNode.GetID())
+      self.logic.CurrentSourceNode.SetAttribute('CurveMaker.CurveModel',self.logic.CurrentDestinationNode.GetID())
       self.logic.updateCurve()
 
       
@@ -477,21 +479,21 @@ class CurveMakerWidget:
 
     
   def onSelectInterpolationNone(self, s):
-    self.logic.setInterpolationMethod(0)
+    self.logic.setInterpolationMethod('none')
     self.InterpResolutionSliderWidget.enabled = True
     if self.RingOn != None:
       self.RingOn.enabled = True
 
       
   def onSelectInterpolationCardinalSpline(self, s):
-    self.logic.setInterpolationMethod(1)
+    self.logic.setInterpolationMethod('cardinal')
     self.InterpResolutionSliderWidget.enabled = True
     if self.RingOn != None:
       self.RingOn.enabled = True
 
       
   def onSelectInterpolationHermiteSpline(self, s):
-    self.logic.setInterpolationMethod(2)
+    self.logic.setInterpolationMethod('hermite')
     self.InterpResolutionSliderWidget.enabled = False
     ## Currently Hermite Spline Interpolation does not support the ring mode 
     if self.RingOn != None and self.RingOff != None:
@@ -512,8 +514,8 @@ class CurveMakerWidget:
   def onCurvatureOff(self, s):
     self.logic.setCurvature(0)
     self.scalarBarWidget.SetEnabled(0)
-    if self.logic.DestinationNode:
-      dispNode = self.logic.DestinationNode.GetDisplayNode()
+    if self.logic.CurrentDestinationNode:
+      dispNode = self.logic.CurrentDestinationNode.GetDisplayNode()
       dispNode.ScalarVisibilityOff()
     self.meanCurvatureLineEdit.enabled = False
     self.minCurvatureLineEdit.enabled = False
@@ -528,8 +530,8 @@ class CurveMakerWidget:
     self.logic.setCurvature(1)
     self.scalarBarWidget.Modified()
     self.scalarBarWidget.SetEnabled(1)
-    if self.logic.DestinationNode:
-      dispNode = self.logic.DestinationNode.GetDisplayNode()
+    if self.logic.CurrentDestinationNode:
+      dispNode = self.logic.CurrentDestinationNode.GetDisplayNode()
       colorTable = slicer.util.getNode('ColdToHotRainbow')
       dispNode.SetAndObserveColorNodeID(colorTable.GetID())
       dispNode.ScalarVisibilityOn()
@@ -544,23 +546,23 @@ class CurveMakerWidget:
     
   def onAutoCurvatureRangeOff(self, s):
     self.curvatureColorRangeWidget.enabled = True
-    if self.logic.DestinationNode:
-      dispNode = self.logic.DestinationNode.GetDisplayNode()
+    if self.logic.CurrentDestinationNode:
+      dispNode = self.logic.CurrentDestinationNode.GetDisplayNode()
       if dispNode:
         dispNode.AutoScalarRangeOff()
 
     
   def onAutoCurvatureRangeOn(self, s):
     self.curvatureColorRangeWidget.enabled = False
-    if self.logic.DestinationNode:
-      dispNode = self.logic.DestinationNode.GetDisplayNode()
+    if self.logic.CurrentDestinationNode:
+      dispNode = self.logic.CurrentDestinationNode.GetDisplayNode()
       if dispNode:
         dispNode.AutoScalarRangeOn()
         self.updateCurvatureInterface()
     
   def onUpdateCurvatureColorRange(self, min, max):
-    if self.logic.DestinationNode:
-      dispNode = self.logic.DestinationNode.GetDisplayNode()
+    if self.logic.CurrentDestinationNode:
+      dispNode = self.logic.CurrentDestinationNode.GetDisplayNode()
       if dispNode:
         if self.autoCurvatureRangeOff.checked == True:
           dispNode.AutoScalarRangeOff()
@@ -579,8 +581,8 @@ class CurveMakerWidget:
 
 
   def updateCurvatureInterface(self):
-    if self.logic.DestinationNode and self.logic.Curvature:
-      dispNode = self.logic.DestinationNode.GetDisplayNode()
+    if self.logic.CurrentDestinationNode and self.logic.Curvature:
+      dispNode = self.logic.CurrentDestinationNode.GetDisplayNode()
       if dispNode:
         colorTable = dispNode.GetColorNode()
         if colorTable == None:
@@ -674,24 +676,24 @@ class CurveMakerWidget:
 class CurveMakerLogic:
 
   def __init__(self):
-    self.SourceNode = None
-    self.DestinationNode = None
-    self.TubeRadius = 5.0
+    self.CurrentSourceNode = None
+    self.CurrentDestinationNode = None
 
     self.AutomaticUpdate = False
     self.NumberOfIntermediatePoints = 20
     self.ModelColor = [0.0, 0.0, 1.0]
 
     self.CurvePoly = None
-    self.interpResolution = 25
     
     # Interpolation method:
-    #  0: None
-    #  1: Cardinal Spline (VTK default)
-    #  2: Hermite Spline (Endoscopy module default)
-    self.InterpolationMethod = 0
-
-    self.RingMode = 0
+    #  'none': None
+    #  'cardinal': Cardinal Spline (VTK default)
+    #  'hermite': Hermite Spline (Endoscopy module default)
+    self.DefaultInterpolationMethod = 'cardinal'
+    self.DefaultRingMode = 0
+    self.DefaultInterpResolution = 25
+    self.DefaultTubeRadius = 5.0
+    
     self.CurveLength = -1.0  ## Length of the curve (<0 means 'not measured')
     self.Curvature = 0
     self.curvatureMeanKappa = None
@@ -704,18 +706,24 @@ class CurveMakerLogic:
     self.updateCurve()
 
   def setTubeRadius(self, radius):
-    self.TubeRadius = radius
+    #self.TubeRadius = radius
+    if self.CurrentSourceNode:
+      self.CurrentSourceNode.SetAttribute('CurveMaker.TubeRadius', str(radius))
     self.updateCurve()
 
   def setInterpolationMethod(self, method):
-    if method > 3 or method < 0:
-      self.InterpolationMethod = 0
-    else:
-      self.InterpolationMethod = method
+    if self.CurrentSourceNode:
+      if method == 'cardinal' or method == 'hermite':
+        self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationMethod', method)
+      else:
+        self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationMethod', 'none')
+        
     self.updateCurve()
 
   def setRing(self, switch):
-    self.RingMode = switch
+    #self.RingMode = switch
+    if self.CurrentSourceNode:
+      self.CurrentSourceNode.SetAttribute('CurveMaker.RingMode', str(switch))
     self.updateCurve()
 
   def setCurvature(self, switch):
@@ -724,11 +732,13 @@ class CurveMakerLogic:
 
   def setInterpResolution(self, res):
     ## Resoution is specified as the number of interpolation points between two consecutive control points
-    self.interpResolution = res
+    #self.interpResolution = res
+    if self.CurrentSourceNode:
+      self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationResolution', str(res))
     self.updateCurve()
     
   def enableAutomaticUpdate(self, auto):
-    self.setSourceNodeObserver(self.SourceNode, auto)
+    self.setSourceNodeObserver(self.CurrentSourceNode, auto)
     self.updateCurve()
 
   def generateCurveOnce(self):
@@ -741,17 +751,12 @@ class CurveMakerLogic:
     if fnode == None:
       return
 
-    print('CurveMaker.AutoUpdate = % s' % fnode.GetAttribute('CurveMaker.AutoUpdate'))
-    print('CurveMaker.ObserverTag = % s' % fnode.GetAttribute('CurveMaker.ObserverTag'))
-    print('switch = % s' % switch)
-    
     if switch == True:
       fnode.SetAttribute('CurveMaker.AutoUpdate', '1')
       if fnode.GetAttribute('CurveMaker.ObserverTag') == None:
-        print('Adding observer')
         # If there is no observer added despite the active AutoUpdate status
+        # TODO: slicer.vtkMRMLMarkupsNode.PointModifiedEvent is not called when a new point is added on Slicer 4.8
         tag = fnode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.controlPointsUpdated, 2)
-        print(tag)
         fnode.SetAttribute('CurveMaker.ObserverTag', str(tag))
       fnode.SetAttribute('CurveMaker.AutoUpdate', '1')
     else:
@@ -774,7 +779,6 @@ class CurveMakerLogic:
         self.setSourceNodeObserver(fnode, False)
         
   def controlPointsUpdated(self,caller,event):
-    print('controlPointsUpdated(self,caller,event)')
     self.updateCurve()
 
   def nodeToPoly(self, sourceNode, outputPoly, closed=False):
@@ -848,7 +852,11 @@ class CurveMakerLogic:
     
     # Interpolate x, y and z by using the three spline filters and
     # create new points
-    nInterpolatedPoints = (self.interpResolution+2)*(nOfControlPoints-1) # One section is devided into self.interpResolution segments
+    interpResolutionStr = sourceNode.GetAttribute('CurveMaker.InterpolationResolution')
+    interpResolution = self.DefaultInterpResolution
+    if interpResolutionStr:
+      interpResolution = float(interpResolutionStr)
+    nInterpolatedPoints = (interpResolution+2)*(nOfControlPoints-1) # One section is devided into self.interpResolution segments
     points = vtk.vtkPoints()
     r = [0.0, 0.0]
     aSplineX.GetParametricRange(r)
@@ -1019,7 +1027,7 @@ class CurveMakerLogic:
     #if self.AutomaticUpdate == False:
     #  return
     if currentOnly:
-      self.updateSingleCurve(self.SourceNode, False)
+      self.updateSingleCurve(self.CurrentSourceNode, False)
     else:
       fnodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLMarkupsFiducialNode')
       for i in range(fnodes.GetNumberOfItems()):
@@ -1034,7 +1042,8 @@ class CurveMakerLogic:
     
     if sourceNode:
       nodeID = sourceNode.GetAttribute('CurveMaker.CurveModel')
-      destinationNode = slicer.mrmlScene.GetNodeByID(nodeID)
+      if nodeID != None:
+        destinationNode = slicer.mrmlScene.GetNodeByID(nodeID)
       if autoUpdate:
         fUpdate = (sourceNode.GetAttribute('CurveMaker.AutoUpdate') == '1')
       
@@ -1056,24 +1065,33 @@ class CurveMakerLogic:
           modelDisplayNode.SetColor(self.ModelColor)
           slicer.mrmlScene.AddNode(modelDisplayNode)
           destinationNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-        
-        if self.InterpolationMethod == 0:
-        
-          if self.RingMode > 0:
+
+        method = self.DefaultInterpolationMethod
+        methodStr = sourceNode.GetAttribute('CurveMaker.InterpolationMethod')
+        if methodStr:
+          method = methodStr
+
+        ringMode = self.DefaultRingMode
+        ringModeStr = sourceNode.GetAttribute('CurveMaker.RingMode')
+        if ringModeStr:
+          ringMode = int(ringModeStr)
+
+        if method == 'none' or method == None:
+          if ringMode > 0:
             self.nodeToPoly(sourceNode, self.CurvePoly, True)
           else:
             self.nodeToPoly(sourceNode, self.CurvePoly, False)
         
-        elif self.InterpolationMethod == 1: # Cardinal Spline
+        elif method == 'cardinal': # Cardinal Spline
         
-          if self.RingMode > 0:
+          if ringMode > 0:
             self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly, True)
           else:
             self.nodeToPolyCardinalSpline(sourceNode, self.CurvePoly, False)
         
-        elif self.InterpolationMethod == 2: # Hermite Spline
+        elif method == 'hermite': # Hermite Spline
         
-          if self.RingMode > 0:        
+          if ringMode > 0:        
             self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly, True)
           else:
             self.nodeToPolyHermiteSpline(sourceNode, self.CurvePoly, False)
@@ -1084,8 +1102,8 @@ class CurveMakerLogic:
       curvatureValues = vtk.vtkDoubleArray()
 
       fCurvature = False
-      if self.SourceNode:
-        fCurvature = (sourceNode.GetID() == self.SourceNode.GetID() and self.Curvature)
+      if self.CurrentSourceNode:
+        fCurvature = (sourceNode.GetID() == self.CurrentSourceNode.GetID() and self.Curvature)
 
       if fCurvature:
         ## If the curvature option is ON, calculate the curvature along the curve.
@@ -1100,7 +1118,12 @@ class CurveMakerLogic:
         self.curvatureMaxKappa = None
        
       tubeFilter.SetInputData(self.CurvePoly)
-      tubeFilter.SetRadius(self.TubeRadius)
+      #tubeFilter.SetRadius(self.TubeRadius)
+      radius = sourceNode.GetAttribute('CurveMaker.TubeRadius')
+      if radius:
+        tubeFilter.SetRadius(float(radius))
+      else:
+        tubeFilter.SetRadius(self.DefaultTubeRadius)
       tubeFilter.SetNumberOfSides(20)
       tubeFilter.CappingOn()
       tubeFilter.Update()
