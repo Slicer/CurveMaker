@@ -306,7 +306,6 @@ class CurveMakerWidget:
 
     curvatureFormLayout.addRow("Curvature mode:", self.curvatureLayout)
 
-    autoCurvatureRangeFormLayout = qt.QFormLayout(curvatureCollapsibleButton)
     self.autoCurvatureRangeLayout = qt.QHBoxLayout()
     self.autoCurvatureRangeOff = qt.QRadioButton("Manual")
     self.autoCurvatureRangeOff.connect('clicked(bool)', self.onAutoCurvatureRangeOff)
@@ -395,6 +394,8 @@ class CurveMakerWidget:
 
   def onEnableAutoUpdate(self, state):
     self.logic.enableAutomaticUpdate(state)
+    self.logic.updateCurve()
+
 
   def onGenerateCurve(self):
     self.logic.generateCurveOnce()
@@ -465,6 +466,7 @@ class CurveMakerWidget:
       
   def onTubeUpdated(self):
     self.logic.setTubeRadius(self.RadiusSliderWidget.value)
+    self.logic.updateCurve()
 
     
   def onInterpResolutionUpdated(self):
@@ -483,6 +485,7 @@ class CurveMakerWidget:
     self.InterpResolutionSliderWidget.enabled = True
     if self.RingOn != None:
       self.RingOn.enabled = True
+    self.logic.updateCurve()
 
       
   def onSelectInterpolationCardinalSpline(self, s):
@@ -490,6 +493,7 @@ class CurveMakerWidget:
     self.InterpResolutionSliderWidget.enabled = True
     if self.RingOn != None:
       self.RingOn.enabled = True
+    self.logic.updateCurve()
 
       
   def onSelectInterpolationHermiteSpline(self, s):
@@ -501,6 +505,7 @@ class CurveMakerWidget:
       self.logic.setRing(0)
       self.RingOn.enabled = False
       self.RingOff.checked = True
+    self.logic.updateCurve()
 
       
   def onRingOff(self, s):
@@ -705,21 +710,27 @@ class CurveMakerLogic:
       self.NumberOfIntermediatePoints = npts
     self.updateCurve()
 
-  def setTubeRadius(self, radius):
+  def setTubeRadius(self, radius, sourceNode=None):
     #self.TubeRadius = radius
-    if self.CurrentSourceNode:
-      self.CurrentSourceNode.SetAttribute('CurveMaker.TubeRadius', str(radius))
-    self.updateCurve()
+    if sourceNode == None:
+      if self.CurrentSourceNode:
+        self.CurrentSourceNode.SetAttribute('CurveMaker.TubeRadius', str(radius))
+    else:
+      sourceNode.SetAttribute('CurveMaker.TubeRadius', str(radius))
 
-  def setInterpolationMethod(self, method):
-    if self.CurrentSourceNode:
+  def setInterpolationMethod(self, method, sourceNode=None):
+    if sourceNode == None:
+      if self.CurrentSourceNode:
+        if method == 'cardinal' or method == 'hermite':
+          self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationMethod', method)
+        else:
+          self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationMethod', 'none')
+    else:
       if method == 'cardinal' or method == 'hermite':
-        self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationMethod', method)
+        sourceNode.SetAttribute('CurveMaker.InterpolationMethod', method)
       else:
-        self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationMethod', 'none')
+        sourceNode.SetAttribute('CurveMaker.InterpolationMethod', 'none')
         
-    self.updateCurve()
-
   def setRing(self, switch):
     #self.RingMode = switch
     if self.CurrentSourceNode:
@@ -737,9 +748,11 @@ class CurveMakerLogic:
       self.CurrentSourceNode.SetAttribute('CurveMaker.InterpolationResolution', str(res))
     self.updateCurve()
     
-  def enableAutomaticUpdate(self, auto):
-    self.setSourceNodeObserver(self.CurrentSourceNode, auto)
-    self.updateCurve()
+  def enableAutomaticUpdate(self, auto, sourceNode=None):
+    if sourceNode == None:
+      self.setSourceNodeObserver(self.CurrentSourceNode, auto)
+    else:
+      self.setSourceNodeObserver(sourceNode, auto)
 
   def generateCurveOnce(self):
     #prevAutomaticUpdate = self.AutomaticUpdate
@@ -1115,17 +1128,17 @@ class CurveMakerLogic:
         self.curvatureMeanKappa = None
         self.curvatureMinKappa = None
         self.curvatureMaxKappa = None
-       
-      tubeFilter.SetInputData(self.CurvePoly[sourceNode.GetID()])
-      #tubeFilter.SetRadius(self.TubeRadius)
-      radius = sourceNode.GetAttribute('CurveMaker.TubeRadius')
-      if radius:
-        tubeFilter.SetRadius(float(radius))
-      else:
-        tubeFilter.SetRadius(self.DefaultTubeRadius)
-      tubeFilter.SetNumberOfSides(20)
-      tubeFilter.CappingOn()
-      tubeFilter.Update()
+
+      if (sourceNode.GetID() in self.CurvePoly) and self.CurvePoly[sourceNode.GetID()]:
+        tubeFilter.SetInputData(self.CurvePoly[sourceNode.GetID()])
+        radius = sourceNode.GetAttribute('CurveMaker.TubeRadius')
+        if radius:
+          tubeFilter.SetRadius(float(radius))
+        else:
+          tubeFilter.SetRadius(self.DefaultTubeRadius)
+        tubeFilter.SetNumberOfSides(20)
+        tubeFilter.CappingOn()
+        tubeFilter.Update()
 
       destinationNode.SetAndObservePolyData(tubeFilter.GetOutput())
       destinationNode.Modified()
