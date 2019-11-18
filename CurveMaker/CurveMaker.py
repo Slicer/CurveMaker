@@ -73,14 +73,14 @@ class CurveMakerWidget:
     ####################
 
     #
-    # Parameters Area
+    # Node Selection Area
     #
-    parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-    parametersCollapsibleButton.text = "Parameters"
-    self.layout.addWidget(parametersCollapsibleButton)
+    nodeSelectionCollapsibleButton = ctk.ctkCollapsibleButton()
+    nodeSelectionCollapsibleButton.text = "Nodes"
+    self.layout.addWidget(nodeSelectionCollapsibleButton)
 
     # Layout within the dummy collapsible button
-    parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+    nodeSelectionFormLayout = qt.QFormLayout(nodeSelectionCollapsibleButton)
 
     #
     # Source points (vtkMRMLMarkupsFiducialNode)
@@ -95,7 +95,7 @@ class CurveMakerWidget:
     self.SourceSelector.showChildNodeTypes = False
     self.SourceSelector.setMRMLScene( slicer.mrmlScene )
     self.SourceSelector.setToolTip( "Pick up a Markups node listing fiducials." )
-    parametersFormLayout.addRow("Source points: ", self.SourceSelector)
+    nodeSelectionFormLayout.addRow("Source points: ", self.SourceSelector)
 
     #
     # Target point (vtkMRMLMarkupsFiducialNode)
@@ -111,7 +111,17 @@ class CurveMakerWidget:
     self.DestinationSelector.showChildNodeTypes = False
     self.DestinationSelector.setMRMLScene( slicer.mrmlScene )
     self.DestinationSelector.setToolTip( "Pick up or create a Model node." )
-    parametersFormLayout.addRow("Curve model: ", self.DestinationSelector)
+    nodeSelectionFormLayout.addRow("Curve model: ", self.DestinationSelector)
+
+    #
+    # Parameters Area
+    #
+    parametersCollapsibleButton = ctk.ctkCollapsibleButton()
+    parametersCollapsibleButton.text = "Parameters"
+    self.layout.addWidget(parametersCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
     #
     # Radius for the tube
@@ -398,10 +408,7 @@ class CurveMakerWidget:
     self.logic.generateCurveOnce()
     
   def onSourceSelected(self):
-    ## Remove observer if previous node exists
-    #if self.logic.SourceNode and self.tagSourceNode:
-    #  self.logic.SourceNode.RemoveObserver(self.tagSourceNode)
-
+    
     # Update selected node, add observer, and update control points
     sourceNode = self.SourceSelector.currentNode()
     destinationNode = self.DestinationSelector.currentNode()
@@ -410,7 +417,14 @@ class CurveMakerWidget:
 
       # Check if model has already been generated for this fiducial list
       tubeModelID = self.logic.SourceNode.GetAttribute('CurveMaker.CurveModel')
-      self.DestinationSelector.setCurrentNodeID(tubeModelID)
+      if tubeModelID:
+        self.DestinationSelector.setCurrentNodeID(tubeModelID)
+      else:
+        # If not, create a new one
+        tubeModel = slicer.mrmlScene.CreateNodeByClass('vtkMRMLModelNode')
+        tubeModel.SetName('%s_Model' % sourceNode.GetName())
+        slicer.mrmlScene.AddNode(tubeModel)
+        self.DestinationSelector.setCurrentNodeID(tubeModel.GetID())
 
     # Update AutoUpdate checkbox
     if sourceNode == None:
@@ -674,6 +688,7 @@ class CurveMakerWidget:
 class CurveMakerLogic:
 
   def __init__(self):
+    
     self.SourceNode = None
     self.DestinationNode = None
     self.TubeRadius = 5.0
@@ -774,7 +789,6 @@ class CurveMakerLogic:
         self.setSourceNodeObserver(fnode, False)
         
   def controlPointsUpdated(self,caller,event):
-    print('controlPointsUpdated(self,caller,event)')
     self.updateCurve()
 
   def nodeToPoly(self, sourceNode, outputPoly, closed=False):
@@ -1034,7 +1048,8 @@ class CurveMakerLogic:
     
     if sourceNode:
       nodeID = sourceNode.GetAttribute('CurveMaker.CurveModel')
-      destinationNode = slicer.mrmlScene.GetNodeByID(nodeID)
+      if nodeID:
+        destinationNode = slicer.mrmlScene.GetNodeByID(nodeID)
       if autoUpdate:
         fUpdate = (sourceNode.GetAttribute('CurveMaker.AutoUpdate') == '1')
       
