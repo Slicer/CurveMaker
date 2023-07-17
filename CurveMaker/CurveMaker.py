@@ -614,7 +614,7 @@ class CurveMakerWidget:
       showErrorVec = self.showErrorVectorCheckBox.isChecked()
       
       self.fiducialsTableData = []
-      nOfControlPoints = self.targetFiducialsNode.GetNumberOfFiducials()
+      nOfControlPoints = self.targetFiducialsNode.GetNumberOfControlPoints()
 
       if self.fiducialsTable.rowCount != nOfControlPoints:
         self.fiducialsTable.setRowCount(nOfControlPoints)
@@ -625,7 +625,7 @@ class CurveMakerWidget:
         label = self.targetFiducialsNode.GetNthFiducialLabel(i)
         pos = [0.0, 0.0, 0.0]
 
-        self.targetFiducialsNode.GetNthFiducialPosition(i,pos)
+        self.targetFiducialsNode.GetNthControlPointPosition(i,pos)
         (err, evec) = self.logic.distanceToPoint(pos, extrapolate)
 
         posstr = '(%.3f, %.3f, %.3f)' % (pos[0], pos[1], pos[2])
@@ -724,7 +724,7 @@ class CurveMakerLogic:
     points = vtk.vtkPoints()
     cellArray = vtk.vtkCellArray()
 
-    nOfControlPoints = sourceNode.GetNumberOfFiducials()
+    nOfControlPoints = sourceNode.GetNumberOfControlPoints()
     pos = [0.0, 0.0, 0.0]
     posStartEnd = [0.0, 0.0, 0.0]
 
@@ -736,8 +736,8 @@ class CurveMakerLogic:
     else:
       posStart = [0.0, 0.0, 0.0]
       posEnd = [0.0, 0.0, 0.0]
-      sourceNode.GetNthFiducialPosition(0,posStart)
-      sourceNode.GetNthFiducialPosition(nOfControlPoints-1,posEnd)
+      sourceNode.GetNthControlPointPosition(0,posStart)
+      sourceNode.GetNthControlPointPosition(nOfControlPoints-1,posEnd)
       posStartEnd[0] = (posStart[0]+posEnd[0])/2.0
       posStartEnd[1] = (posStart[1]+posEnd[1])/2.0
       posStartEnd[2] = (posStart[2]+posEnd[2])/2.0
@@ -750,7 +750,7 @@ class CurveMakerLogic:
       offset = 1
       
     for i in range(nOfControlPoints):
-      sourceNode.GetNthFiducialPosition(i,pos)
+      sourceNode.GetNthControlPointPosition(i,pos)
       points.SetPoint(offset+i,pos)
       cellArray.InsertCellPoint(offset+i)
 
@@ -766,7 +766,7 @@ class CurveMakerLogic:
 
   def nodeToPolyCardinalSpline(self, sourceNode, outputPoly, closed=False):
 
-    nOfControlPoints = sourceNode.GetNumberOfFiducials()
+    nOfControlPoints = sourceNode.GetNumberOfControlPoints()
     pos = [0.0, 0.0, 0.0]
 
     # One spline for each direction.
@@ -784,7 +784,7 @@ class CurveMakerLogic:
       aSplineZ.ClosedOff()
 
     for i in range(0, nOfControlPoints):
-      sourceNode.GetNthFiducialPosition(i, pos)
+      sourceNode.GetNthControlPointPosition(i, pos)
       aSplineX.AddPoint(i, pos[0])
       aSplineY.AddPoint(i, pos[1])
       aSplineZ.AddPoint(i, pos[2])
@@ -964,7 +964,7 @@ class CurveMakerLogic:
 
     if self.SourceNode and self.DestinationNode:
 
-      if self.SourceNode.GetNumberOfFiducials() < 2:
+      if self.SourceNode.GetNumberOfControlPoints() < 2:
         if self.CurvePoly != None:
           self.CurvePoly.Initialize()
 
