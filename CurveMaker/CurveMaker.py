@@ -3,7 +3,6 @@ import unittest
 from __main__ import vtk, qt, ctk, slicer
 import math
 import numpy
-from Endoscopy import EndoscopyComputePath
 
 #
 # CurveMaker
@@ -130,15 +129,12 @@ class CurveMakerWidget:
     self.InterpolationLayout = qt.QHBoxLayout()
     self.InterpolationNone = qt.QRadioButton("None")
     self.InterpolationCardinalSpline = qt.QRadioButton("Cardinal Spline")
-    self.InterpolationHermiteSpline = qt.QRadioButton("Hermite Spline (for Endoscopy)")
     self.InterpolationLayout.addWidget(self.InterpolationNone)
     self.InterpolationLayout.addWidget(self.InterpolationCardinalSpline)
-    self.InterpolationLayout.addWidget(self.InterpolationHermiteSpline)
     
     self.InterpolationGroup = qt.QButtonGroup()
     self.InterpolationGroup.addButton(self.InterpolationNone)
     self.InterpolationGroup.addButton(self.InterpolationCardinalSpline)
-    self.InterpolationGroup.addButton(self.InterpolationHermiteSpline)
 
     parametersFormLayout.addRow("Interpolation: ", self.InterpolationLayout)
 
@@ -186,7 +182,6 @@ class CurveMakerWidget:
     # Connections
     self.InterpolationNone.connect('clicked(bool)', self.onSelectInterpolationNone)
     self.InterpolationCardinalSpline.connect('clicked(bool)', self.onSelectInterpolationCardinalSpline)
-    self.InterpolationHermiteSpline.connect('clicked(bool)', self.onSelectInterpolationHermiteSpline)
     self.RingOff.connect('clicked(bool)', self.onRingOff)
     self.RingOn.connect('clicked(bool)', self.onRingOn)
     self.EnableAutoUpdateCheckBox.connect('toggled(bool)', self.onEnableAutoUpdate)
@@ -470,17 +465,6 @@ class CurveMakerWidget:
       self.RingOn.enabled = True
 
       
-  def onSelectInterpolationHermiteSpline(self, s):
-    self.logic.setInterpolationMethod(2)
-    self.InterpResolutionSliderWidget.enabled = False
-    ## Currently Hermite Spline Interpolation does not support the ring mode 
-    if self.RingOn != None and self.RingOff != None:
-      self.RingOn.checked = False
-      self.logic.setRing(0)
-      self.RingOn.enabled = False
-      self.RingOff.checked = True
-
-      
   def onRingOff(self, s):
     self.logic.setRing(0)
 
@@ -668,7 +652,6 @@ class CurveMakerLogic:
     # Interpolation method:
     #  0: None
     #  1: Cardinal Spline (VTK default)
-    #  2: Hermite Spline (Endoscopy module default)
     self.InterpolationMethod = 0
 
     self.RingMode = 0
@@ -851,12 +834,6 @@ class CurveMakerLogic:
       linesIDArray.SetTuple1( 0, linesIDArray.GetNumberOfTuples() - 1 )
       lines.SetNumberOfCells(1)
 
-
-  def nodeToPolyHermiteSpline(self, sourceNode, outputPoly, closed=False):
-    endoscopyResult = EndoscopyComputePath(sourceNode)
-    self.pathToPoly(endoscopyResult.path, outputPoly)
-
-
   def calculateLineLength(self, poly):
     lines = poly.GetLines()
     points = poly.GetPoints()
@@ -994,13 +971,6 @@ class CurveMakerLogic:
             self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, True)
           else:
             self.nodeToPolyCardinalSpline(self.SourceNode, self.CurvePoly, False)
-        
-        elif self.InterpolationMethod == 2: # Hermite Spline
-        
-          if self.RingMode > 0:        
-            self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, True)
-          else:
-            self.nodeToPolyHermiteSpline(self.SourceNode, self.CurvePoly, False)
           
         self.CurveLength = self.calculateLineLength(self.CurvePoly)
 
