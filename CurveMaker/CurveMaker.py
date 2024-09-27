@@ -497,7 +497,7 @@ class CurveMakerWidget:
       colorTable = slicer.util.getNode('ColdToHotRainbow')
       dispNode.SetAndObserveColorNodeID(colorTable.GetID())
       dispNode.ScalarVisibilityOn()
-      dispNode.SetScalarRangeFlag(slicer.vtkMRMLModelDisplayNode.UseDisplayNodeScalarRange)
+      dispNode.SetScalarRangeFlag(slicer.vtkMRMLModelDisplayNode.UseDataScalarRange)
       self.scalarBarWidget.GetScalarBarActor().SetLookupTable(colorTable.GetLookupTable())
     self.meanCurvatureLineEdit.enabled = True
     self.minCurvatureLineEdit.enabled = True
